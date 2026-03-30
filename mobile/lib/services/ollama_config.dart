@@ -1,28 +1,27 @@
 class OllamaConfig {
-  /// URL de votre instance Ollama.
+  /// URL de l'API Campus Companion.
   ///
-  /// Exemple: `http://localhost:11434`
+  /// Exemple: `http://localhost:8080`
   final String baseUrl;
-
-  /// Nom du modele charge dans Ollama.
-  ///
-  /// Exemple: `llama3`
-  final String model;
 
   const OllamaConfig({
     required this.baseUrl,
-    required this.model,
   });
 
   factory OllamaConfig.fromEnv() {
-    // Ces valeurs peuvent etre surchargees lors du build, par ex:
-    // flutter run --dart-define=OLLAMA_BASE_URL="http://192.168.1.10:11434" --dart-define=OLLAMA_MODEL="llama3"
-    const baseUrl =
-        String.fromEnvironment('OLLAMA_BASE_URL', defaultValue: 'http://localhost:11434');
-    const model = String.fromEnvironment('OLLAMA_MODEL', defaultValue: 'llama3');
+    // Priorite a CAMPUS_API_BASE_URL, fallback pour compatibilite avec anciennes
+    // variables d'environnement.
+    const campusBaseUrl = String.fromEnvironment('CAMPUS_API_BASE_URL', defaultValue: '');
+    const pedagogyBaseUrl = String.fromEnvironment('PEDAGOGY_API_BASE_URL', defaultValue: '');
+    const ollamaBaseUrl = String.fromEnvironment('OLLAMA_BASE_URL', defaultValue: '');
+    const baseUrl = campusBaseUrl;
+    final selected = baseUrl.trim().isNotEmpty
+        ? baseUrl
+        : (pedagogyBaseUrl.trim().isNotEmpty ? pedagogyBaseUrl : ollamaBaseUrl);
     return OllamaConfig(
-      baseUrl: _normalizeBaseUrl(baseUrl),
-      model: model,
+      baseUrl: _normalizeBaseUrl(
+        selected.trim().isEmpty ? 'http://localhost:8080' : selected,
+      ),
     );
   }
 

@@ -43,55 +43,55 @@ class OllamaChatMessage {
 class OllamaChatResponse {
   final String content;
   final List<String> sources;
+  final bool ticketCreated;
+  final int? ticketId;
+  final int? interactionId;
 
-  const OllamaChatResponse({required this.content, this.sources = const <String>[]});
+  const OllamaChatResponse({
+    required this.content,
+    this.sources = const <String>[],
+    this.ticketCreated = false,
+    this.ticketId,
+    this.interactionId,
+  });
 
   static OllamaChatResponse fromJson(Map<String, dynamic> json) {
-    final dynamic message = json['message'];
+    final dynamic answer = json['answer'] ?? json['response'];
     final sources = _readSources(json);
-    if (message is Map) {
-      final content = (message['content'] ?? '').toString();
-      return OllamaChatResponse(content: content, sources: sources);
-    }
-
-    // Fallback: some endpoints/versions use `response` instead.
-    final dynamic response = json['response'];
-    if (response != null) {
-      return OllamaChatResponse(content: response.toString(), sources: sources);
-    }
-
-    return OllamaChatResponse(content: '', sources: sources);
+    return OllamaChatResponse(
+      content: answer?.toString() ?? '',
+      sources: sources,
+      ticketCreated: json['ticketCreated'] == true,
+      ticketId: _toIntOrNull(json['ticketId']),
+      interactionId: _toIntOrNull(json['interactionId']),
+    );
   }
 
   static List<String> _readSources(Map<String, dynamic> json) {
     final direct = json['sources'];
     if (direct is List) {
-      return direct.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList();
-    }
-
-    // Some wrappers put metadata under a "context" object.
-    final context = json['context'];
-    if (context is Map) {
-      final nested = context['sources'];
-      if (nested is List) {
-        return nested.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList();
-      }
+      return direct
+          .map((e) {
+            if (e is Map) {
+              final title = (e['title'] ?? '').toString().trim();
+              final url = (e['downloadUrl'] ?? '').toString().trim();
+              if (title.isEmpty && url.isEmpty) return '';
+              if (url.isEmpty) return title;
+              if (title.isEmpty) return url;
+              return '$title ($url)';
+            }
+            return e.toString();
+          })
+          .where((e) => e.trim().isNotEmpty)
+          .toList();
     }
     return const <String>[];
   }
-}
 
-class OllamaGenerateResponse {
-  final String content;
-
-  const OllamaGenerateResponse({required this.content});
-
-  static OllamaGenerateResponse fromJson(Map<String, dynamic> json) {
-    final dynamic response = json['response'];
-    if (response != null) {
-      return OllamaGenerateResponse(content: response.toString());
-    }
-    return const OllamaGenerateResponse(content: '');
+  static int? _toIntOrNull(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    return int.tryParse(value.toString());
   }
 }
 
@@ -105,29 +105,27 @@ class OllamaClient {
 
   Future<OllamaChatResponse> chat({
     required List<OllamaChatMessage> messages,
-    double temperature = 0.2,
-    int? numPredict,
+    String? sessionId,
+    int? userId,
     Duration timeout = const Duration(seconds: 60),
   }) async {
     final Uri url = config.chatUri;
-
-    final Map<String, dynamic> options = <String, dynamic>{
-      'temperature': temperature,
-      'num_predict': numPredict,
-    }..removeWhere((_, v) => v == null);
-
+    final question = _extractLastUserQuestion(messages);
+    if (question.trim().isEmpty) {
+      throw const OllamaException(message: 'Question utilisateur introuvable.');
+    }
     final Map<String, dynamic> body = <String, dynamic>{
-      'model': config.model,
-      'messages': messages.map((m) => m.toJson()).toList(),
-      'stream': false,
-      'options': options,
-    };
+      'question': question.trim(),
+      'sessionId': sessionId,
+      'userId': userId,
+    }..removeWhere((_, v) => v == null);
 
     final http.Response res = await http
         .post(
           url,
           headers: const <String, String>{
             'Content-Type': 'application/json',
+            'Accept': 'application/json',
           },
           body: jsonEncode(body),
         )
@@ -145,7 +143,7 @@ class OllamaClient {
     final dynamic decoded = jsonDecode(res.body);
     if (decoded is! Map<String, dynamic>) {
       throw OllamaException(
-        message: 'Unexpected Ollama chat response format',
+        message: 'Unexpected Campus API chat response format',
         uri: url,
         statusCode: res.statusCode,
         responseBody: res.body,
@@ -155,72 +153,30 @@ class OllamaClient {
     return OllamaChatResponse.fromJson(decoded);
   }
 
-  Future<OllamaGenerateResponse> generate({
-    required String prompt,
-    double temperature = 0.2,
-    int? numPredict,
-    Duration timeout = const Duration(seconds: 60),
-  }) async {
-    final Uri url = Uri.parse('${config.baseUrl}/api/generate');
-
-    final Map<String, dynamic> options = <String, dynamic>{
-      'temperature': temperature,
-      'num_predict': numPredict,
-    }..removeWhere((_, v) => v == null);
-
-    final Map<String, dynamic> body = <String, dynamic>{
-      'model': config.model,
-      'prompt': prompt,
-      'stream': false,
-      'options': options,
-    };
-
-    final http.Response res = await http
-        .post(
-          url,
-          headers: const <String, String>{
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode(body),
-        )
-        .timeout(timeout);
-
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw OllamaException(
-        message: 'Ollama generate request failed',
-        uri: url,
-        statusCode: res.statusCode,
-        responseBody: res.body,
-      );
-    }
-
-    final dynamic decoded = jsonDecode(res.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw OllamaException(
-        message: 'Unexpected Ollama generate response format',
-        uri: url,
-        statusCode: res.statusCode,
-        responseBody: res.body,
-      );
-    }
-
-    return OllamaGenerateResponse.fromJson(decoded);
-  }
-
   /// Convenience wrapper that returns only the assistant text.
   Future<String> chatText({
     required List<OllamaChatMessage> messages,
-    double temperature = 0.2,
-    int? numPredict,
+    String? sessionId,
+    int? userId,
     Duration timeout = const Duration(seconds: 60),
   }) async {
     final resp = await chat(
       messages: messages,
-      temperature: temperature,
-      numPredict: numPredict,
+      sessionId: sessionId,
+      userId: userId,
       timeout: timeout,
     );
     return resp.content;
+  }
+
+  String _extractLastUserQuestion(List<OllamaChatMessage> messages) {
+    for (var i = messages.length - 1; i >= 0; i--) {
+      final m = messages[i];
+      if (m.role != 'user') continue;
+      if (m.content.trim().isEmpty) continue;
+      return m.content;
+    }
+    return '';
   }
 }
 

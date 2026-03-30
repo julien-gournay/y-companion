@@ -1,7 +1,7 @@
 class PedagogyConfig {
-  /// Base URL de la future API backoffice.
+  /// Base URL de l'API Campus Companion.
   ///
-  /// Exemple: `https://api.example.com`
+  /// Exemple: `http://localhost:8080`
   final String baseUrl;
 
   /// Jeton optionnel (si l'API nécessite une auth simple côté mobile).
@@ -13,23 +13,23 @@ class PedagogyConfig {
   });
 
   factory PedagogyConfig.fromEnv() {
-    // Surcharge au build, par ex:
-    // flutter run --dart-define=PEDAGOGY_API_BASE_URL="https://api.example.com" --dart-define=PEDAGOGY_API_TOKEN="..."
-    const baseUrl = String.fromEnvironment(
-      'PEDAGOGY_API_BASE_URL',
-      defaultValue: '',
-    );
+    const campusBaseUrl = String.fromEnvironment('CAMPUS_API_BASE_URL', defaultValue: '');
+    const pedagogyBaseUrl = String.fromEnvironment('PEDAGOGY_API_BASE_URL', defaultValue: '');
+    const baseUrl = campusBaseUrl;
     const token = String.fromEnvironment('PEDAGOGY_API_TOKEN', defaultValue: '');
     return PedagogyConfig(
-      baseUrl: _normalizeBaseUrl(baseUrl),
+      baseUrl: _normalizeBaseUrl(
+        (baseUrl.trim().isNotEmpty ? baseUrl : pedagogyBaseUrl).trim().isEmpty
+            ? 'http://localhost:8080'
+            : (baseUrl.trim().isNotEmpty ? baseUrl : pedagogyBaseUrl),
+      ),
       apiToken: token.trim().isEmpty ? null : token.trim(),
     );
   }
 
   bool get isConfigured => baseUrl.trim().isNotEmpty;
 
-  /// Endpoint proposé (à ajuster quand l'API sera figée).
-  Uri get submitQuestionUri => Uri.parse('$baseUrl/api/pedagogy/questions');
+  Uri get submitQuestionUri => Uri.parse('$baseUrl/api/tickets/fallback');
 
   static String _normalizeBaseUrl(String url) {
     var s = url.trim();

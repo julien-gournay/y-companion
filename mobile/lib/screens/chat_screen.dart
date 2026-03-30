@@ -263,7 +263,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final response = await _ollamaClient.chat(
         messages: _toOllamaMessages(),
-        temperature: 0.2,
+        sessionId: _conversationId,
       );
       if (!mounted) return;
 
@@ -276,6 +276,16 @@ class _ChatScreenState extends State<ChatScreen> {
             metaText: _formatSources(response.sources),
           ),
         );
+        if (response.ticketCreated) {
+          _messages.add(
+            _ChatMessage.status(
+              title: 'Ticket créé automatiquement',
+              subtitle: response.ticketId == null
+                  ? "L'equipe pedagogique a recu ta demande."
+                  : 'Reference ticket: #${response.ticketId}',
+            ),
+          );
+        }
         _isSending = false;
       });
       await _persistCurrentConversation();
@@ -285,7 +295,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add(
           _ChatMessage.status(
-            title: 'Erreur Ollama',
+            title: 'Erreur API Campus',
             subtitle: _humanizeOllamaError(e),
           ),
         );
@@ -299,7 +309,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.add(
           _ChatMessage.status(
             title: 'Erreur',
-            subtitle: "Impossible d'obtenir la reponse d'Ollama.",
+            subtitle: "Impossible d'obtenir la reponse de l'API Campus.",
           ),
         );
         _isSending = false;
@@ -335,10 +345,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _humanizeOllamaError(OllamaException e) {
+    final target = e.uri?.toString() ?? 'URL inconnue';
     if (e.statusCode == null) {
-      return "Connexion impossible. Verifie l'URL OLLAMA_BASE_URL (localhost n'est pas accessible depuis un mobile physique).";
+      return "Connexion impossible vers $target. Verifie CAMPUS_API_BASE_URL (localhost n'est pas accessible depuis un mobile physique).";
     }
-    return "Echec Ollama (${e.statusCode}).";
+    final details = (e.responseBody ?? '').trim();
+    if (details.isEmpty) {
+      return "Echec API Campus (${e.statusCode}) sur $target.";
+    }
+    final compact = details.replaceAll('\n', ' ');
+    final shortBody = compact.length > 180 ? '${compact.substring(0, 180)}…' : compact;
+    return "Echec API Campus (${e.statusCode}) sur $target: $shortBody";
   }
 
   Future<void> _openHistory() async {
@@ -365,19 +382,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     return null;
-  }
-
-  List<Map<String, dynamic>> _buildPedagogyContext({int maxItems = 12}) {
-    final ctx = <Map<String, dynamic>>[];
-    for (final m in _messages) {
-      if (m.type == _ChatMessageType.status) continue;
-      ctx.add(<String, dynamic>{
-        'role': m.type == _ChatMessageType.user ? 'user' : 'assistant',
-        'text': m.text,
-      });
-    }
-    if (ctx.length <= maxItems) return ctx;
-    return ctx.sublist(ctx.length - maxItems);
   }
 
   Future<void> _openPedagogyQuestionDialog() async {
@@ -408,8 +412,6 @@ class _ChatScreenState extends State<ChatScreen> {
         final resp = await _pedagogyClient.submitQuestion(
           student: widget.profile,
           question: question,
-          conversationId: _conversationId,
-          chatContext: _buildPedagogyContext(),
         );
 
         if (!mounted) return;

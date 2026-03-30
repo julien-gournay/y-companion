@@ -39,9 +39,6 @@ class PedagogySubmitQuestionResponse {
   }
 }
 
-/// Client HTTP pour envoyer une question à l'équipe pédagogique (backoffice).
-///
-/// Le schéma exact sera ajusté quand l'API sera finalisée.
 class PedagogyClient {
   final PedagogyConfig config;
 
@@ -50,8 +47,6 @@ class PedagogyClient {
   Future<PedagogySubmitQuestionResponse> submitQuestion({
     required StudentProfile student,
     required String question,
-    String? conversationId,
-    List<Map<String, dynamic>>? chatContext,
     Duration timeout = const Duration(seconds: 30),
   }) async {
     if (!config.isConfigured) {
@@ -64,12 +59,11 @@ class PedagogyClient {
     final Uri url = config.submitQuestionUri;
 
     final Map<String, dynamic> body = <String, dynamic>{
-      'student': student.toJson(),
       'question': question,
-      'source': 'mobile',
-      'conversationId': conversationId,
-      'context': chatContext,
-      'createdAtMs': DateTime.now().millisecondsSinceEpoch,
+      'studentName': student.nom,
+      'studentFirstname': student.prenom,
+      'studentClass': student.classe,
+      'studentEmail': student.email,
     }..removeWhere((_, v) => v == null);
 
     final headers = <String, String>{
