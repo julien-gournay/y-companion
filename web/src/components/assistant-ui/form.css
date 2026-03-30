@@ -42,3 +42,14 @@
 .no-response-form button:hover {
     filter: brightness(1.2);
 }
+
+/* Grille responsive pour les petits écrans (mobile) */
+@media screen and (max-width: 600px) {
+    .no-response-form {
+        grid-template-columns: 1fr; /* 1 seule colonne au lieu de 2 */
+    }
+    
+    .form-root {
+        padding: 15px; /* On réduit légèrement l'espacement externe */
+    }
+}

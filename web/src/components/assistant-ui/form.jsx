@@ -11,6 +11,7 @@ export function Form() {
                 <input type="text" placeholder="Prénom" name="first_name" required />
                 <input type="text" placeholder="Classe" name="class" required />
                 <input type="text" placeholder="Email" name="email" required />
+                <input type="text" placeholder="Question" name="question" required />
                 <button type="submit">Envoyer à la péda</button>
             </form>
         </div>
