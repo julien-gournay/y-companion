@@ -114,6 +114,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     // Simulation d’une réponse locale (pas de backend pour l’instant).
+    // TODO(Ollama): replace this local simulation with OllamaClient.chatText(...)
+    // once the screen wiring is implemented.
     await Future.delayed(const Duration(milliseconds: 350));
     if (!mounted) return;
 
