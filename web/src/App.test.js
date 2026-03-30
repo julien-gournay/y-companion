@@ -1,19 +1,18 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen } from "@testing-library/react";
 
-jest.mock('./components/chat/ChatInterface', () => ({
-  ChatInterface: () => <div>Campus Companion Chat</div>,
+jest.mock("@assistant-ui/react", () => ({
+  AssistantRuntimeProvider: ({ children }) => children,
+  useLocalRuntime: () => ({}),
 }));
 
-import App from './App';
+jest.mock("@/components/assistant-ui/thread", () => ({
+  Thread: () => <div>Campus Thread Component</div>,
+}));
 
-test('renders campus companion header', () => {
-  render(<App />);
-  const headerElement = screen.getByText(/campus companion/i);
-  expect(headerElement).toBeInTheDocument();
-});
+import App from "./App";
 
-test('renders chat container in app', () => {
+test("renders thread component", () => {
   render(<App />);
-  const chatElement = screen.getByText(/campus companion chat/i);
-  expect(chatElement).toBeInTheDocument();
+  const threadElement = screen.getByText(/campus thread component/i);
+  expect(threadElement).toBeInTheDocument();
 });
