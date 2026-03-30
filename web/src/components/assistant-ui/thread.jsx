@@ -1,17 +1,18 @@
 import React from "react";
 import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from "@assistant-ui/react";
 import "./thread.css";
+import { Form } from "./form";
 
 export function Thread({ initialSuggestions = [] }) {
   const topSuggestions =
     Array.isArray(initialSuggestions) && initialSuggestions.length > 0
       ? initialSuggestions
       : [
-          "Horaires des cours",
-          "Bibliothèque",
-          "Restaurants du campus",
-          "Événements étudiants",
-        ];
+        "Horaires des cours",
+        "Bibliothèque",
+        "Restaurants du campus",
+        "Événements étudiants",
+      ];
 
   const handleSuggestionClick = (text) => {
     try {
@@ -80,9 +81,8 @@ export function Thread({ initialSuggestions = [] }) {
           {({ message }) => (
             <MessagePrimitive.Root className="message-root">
               <div
-                className={`message-bubble ${
-                  message.role === "user" ? "message-user" : "message-assistant"
-                }`}
+                className={`message-bubble ${message.role === "user" ? "message-user" : "message-assistant"
+                  }`}
               >
                 <MessagePrimitive.Parts />
               </div>
@@ -91,6 +91,8 @@ export function Thread({ initialSuggestions = [] }) {
         </ThreadPrimitive.Messages>
 
       </ThreadPrimitive.Viewport>
+
+      <Form />
 
       <div className="thread-composer">
         <ComposerPrimitive.Root className="composer-root">

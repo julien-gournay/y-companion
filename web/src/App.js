@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react";
 import { Thread } from "./components/assistant-ui/thread";
+import { Form } from "./components/assistant-ui/form";
 import "./App.css";
 
 function extractLastUserText(messages) {
@@ -159,6 +160,7 @@ export default function App() {
       <div className="app-root">
         <Thread initialSuggestions={initialMessagesList[0].metadata.custom.suggestions} />
       </div>
+
     </AssistantRuntimeProvider>
   );
 }
