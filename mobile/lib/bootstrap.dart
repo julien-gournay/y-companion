@@ -15,6 +15,7 @@ class CampusBootstrap extends StatefulWidget {
 class _CampusBootstrapState extends State<CampusBootstrap> {
   StudentProfile? _profile;
   bool _loading = true;
+  bool _isGuest = false;
 
   @override
   void initState() {
@@ -35,18 +36,26 @@ class _CampusBootstrapState extends State<CampusBootstrap> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    if (_profile != null) {
+    if (_profile != null || _isGuest) {
       return ChatScreen(
-        profile: _profile!,
+        profile:
+            _profile ??
+            const StudentProfile(
+              nom: 'Invité',
+              prenom: '',
+              classe: '',
+              email: '',
+            ),
         onReset: () async {
           await clearProfile();
           if (!mounted) return;
-          setState(() => _profile = null);
+          setState(() {
+            _profile = null;
+            _isGuest = false;
+          });
         },
       );
     }
@@ -55,7 +64,9 @@ class _CampusBootstrapState extends State<CampusBootstrap> {
       onProfileSaved: (profile) {
         setState(() => _profile = profile);
       },
+      onSkip: () {
+        setState(() => _isGuest = true);
+      },
     );
   }
 }
-

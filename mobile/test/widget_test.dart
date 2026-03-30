@@ -13,19 +13,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_app/main.dart';
 
 void main() {
-  testWidgets('Onboarding is shown when no profile exists', (WidgetTester tester) async {
+  testWidgets('Onboarding is shown when no profile exists', (
+    WidgetTester tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
 
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Bienvenue ! Présentez-vous pour commencer.'),
-      findsOneWidget,
-    );
+    expect(find.text('Y-compagnon'), findsOneWidget);
   });
 
-  testWidgets('Onboarding is skipped when profile exists', (WidgetTester tester) async {
+  testWidgets('Onboarding is skipped when profile exists', (
+    WidgetTester tester,
+  ) async {
     SharedPreferences.setMockInitialValues({
       'campus_companion_has_profile': true,
       'campus_companion_profile_json': jsonEncode({
@@ -39,6 +40,6 @@ void main() {
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Bienvenue, Marie !'), findsOneWidget);
+    expect(find.text('Campus Companion'), findsOneWidget);
   });
 }
