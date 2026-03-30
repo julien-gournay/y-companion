@@ -1,8 +1,19 @@
 import { render, screen } from '@testing-library/react';
+
+jest.mock('./components/chat/ChatInterface', () => ({
+  ChatInterface: () => <div>Campus Companion Chat</div>,
+}));
+
 import App from './App';
 
-test('renders learn react link', () => {
+test('renders campus companion header', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  const headerElement = screen.getByText(/campus companion/i);
+  expect(headerElement).toBeInTheDocument();
+});
+
+test('renders chat container in app', () => {
+  render(<App />);
+  const chatElement = screen.getByText(/campus companion chat/i);
+  expect(chatElement).toBeInTheDocument();
 });
