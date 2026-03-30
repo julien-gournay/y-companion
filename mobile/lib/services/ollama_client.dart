@@ -42,23 +42,42 @@ class OllamaChatMessage {
 
 class OllamaChatResponse {
   final String content;
+  final List<String> sources;
 
-  const OllamaChatResponse({required this.content});
+  const OllamaChatResponse({required this.content, this.sources = const <String>[]});
 
   static OllamaChatResponse fromJson(Map<String, dynamic> json) {
     final dynamic message = json['message'];
+    final sources = _readSources(json);
     if (message is Map) {
       final content = (message['content'] ?? '').toString();
-      return OllamaChatResponse(content: content);
+      return OllamaChatResponse(content: content, sources: sources);
     }
 
     // Fallback: some endpoints/versions use `response` instead.
     final dynamic response = json['response'];
     if (response != null) {
-      return OllamaChatResponse(content: response.toString());
+      return OllamaChatResponse(content: response.toString(), sources: sources);
     }
 
-    return const OllamaChatResponse(content: '');
+    return OllamaChatResponse(content: '', sources: sources);
+  }
+
+  static List<String> _readSources(Map<String, dynamic> json) {
+    final direct = json['sources'];
+    if (direct is List) {
+      return direct.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList();
+    }
+
+    // Some wrappers put metadata under a "context" object.
+    final context = json['context'];
+    if (context is Map) {
+      final nested = context['sources'];
+      if (nested is List) {
+        return nested.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList();
+      }
+    }
+    return const <String>[];
   }
 }
 
