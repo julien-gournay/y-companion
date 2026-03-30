@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react";
 import { Thread } from "./components/assistant-ui/thread";
 import { Form } from "./components/assistant-ui/form";
+import { Header } from "./components/assistant-ui/header";
 import "./App.css";
 
 function extractLastUserText(messages) {
@@ -24,17 +25,28 @@ function extractLastUserText(messages) {
 }
 
 export default function App() {
+  const [showForm, setShowForm] = useState(false);
+
   const chatModel = useMemo(
     () => ({
       async run({ messages }) {
         try {
           const prompt = extractLastUserText(messages);
 
+          // Triggering fake error block
+          if (prompt.toLowerCase().includes("erreur")) {
+            setShowForm(true);
+            return {
+              content: [{ type: "text", text: "Je n'ai malheureusement pas de réponse précise à cette question. Souhaitez-vous contacter la pédagogie ?" }],
+            };
+          }
+
+          setShowForm(false);
+
           const reply = prompt
             ? `J'ai reçu: "${prompt}"\n\nJe suis ton assistant campus. Comment puis-je t'aider ?`
             : "Bonjour ! 👋 Je suis Campus Companion. Pose-moi ta question !";
 
-          // Simule un délai réseau
           await new Promise((resolve) => setTimeout(resolve, 500));
 
           return {
@@ -66,7 +78,6 @@ export default function App() {
     []
   );
 
-  // expose initial messages list so adapters can fallback to it if needed
   const initialMessagesList = [
     {
       role: "assistant",
@@ -89,7 +100,6 @@ export default function App() {
     () => ({
       generate: async (input) => {
         try {
-          // Normalize input: can be a single message, an array of messages, or an object with messages
           let lastMessage = null;
 
           if (!input) {
@@ -158,9 +168,11 @@ export default function App() {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="app-root">
-        <Thread initialSuggestions={initialMessagesList[0].metadata.custom.suggestions} />
+        <Thread
+          initialSuggestions={initialMessagesList[0].metadata.custom.suggestions}
+          showForm={showForm}
+        />
       </div>
-
     </AssistantRuntimeProvider>
   );
 }

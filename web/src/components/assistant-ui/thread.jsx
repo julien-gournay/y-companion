@@ -3,7 +3,7 @@ import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from "@assistant
 import "./thread.css";
 import { Form } from "./form";
 
-export function Thread({ initialSuggestions = [] }) {
+export function Thread({ initialSuggestions = [], showForm = false }) {
   const topSuggestions =
     Array.isArray(initialSuggestions) && initialSuggestions.length > 0
       ? initialSuggestions
@@ -92,7 +92,9 @@ export function Thread({ initialSuggestions = [] }) {
 
       </ThreadPrimitive.Viewport>
 
-      <Form />
+      {showForm && (
+        <Form />
+      )}
 
       <div className="thread-composer">
         <ComposerPrimitive.Root className="composer-root">

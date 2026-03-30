@@ -1,0 +1,9 @@
+.header-root {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #0d0d0d;
+    color: white;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(110, 110, 110, 0.5);
+}

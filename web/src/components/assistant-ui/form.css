@@ -28,7 +28,6 @@
 
 .no-response-form button {
     grid-column: 1 / -1;
-    /* Prend toute la largeur de la grille */
     padding: 12px;
     border: none;
     border-radius: 5px;
