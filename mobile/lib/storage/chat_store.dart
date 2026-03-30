@@ -73,3 +73,17 @@ Future<void> clearChatHistory() async {
   await prefs.remove(_kActiveConversationIdKey);
 }
 
+Future<void> deleteConversationById(String id) async {
+  final trimmedId = id.trim();
+  if (trimmedId.isEmpty) return;
+
+  final conversations = await loadConversations();
+  final updated = conversations.where((c) => c.id != trimmedId).toList();
+  await saveConversations(updated);
+
+  final activeId = await loadActiveConversationId();
+  if (activeId == trimmedId) {
+    await setActiveConversationId(null);
+  }
+}
+

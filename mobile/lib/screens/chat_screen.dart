@@ -353,6 +353,70 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _conversations = refreshed);
   }
 
+  Future<bool> _confirmDanger({
+    required String title,
+    required String message,
+    required String confirmLabel,
+  }) async {
+    final res = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1B1D20),
+          title: Text(title, style: const TextStyle(color: Colors.white)),
+          content: Text(message, style: TextStyle(color: Colors.white.withOpacity(0.75))),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Annuler', style: TextStyle(color: Colors.white)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(confirmLabel, style: const TextStyle(color: Color(0xFF61C7B5))),
+            ),
+          ],
+        );
+      },
+    );
+    return res ?? false;
+  }
+
+  Future<void> _deleteCurrentConversation() async {
+    final id = _conversationId;
+    if (id == null || id.trim().isEmpty) {
+      await _startNewConversation();
+      return;
+    }
+
+    final ok = await _confirmDanger(
+      title: 'Supprimer cette conversation ?',
+      message: "Cette action est irreversible. La conversation en cours sera supprimée de l'historique.",
+      confirmLabel: 'Supprimer',
+    );
+    if (!ok) return;
+
+    await deleteConversationById(id);
+    final refreshed = await loadConversations();
+    if (!mounted) return;
+
+    if (refreshed.isEmpty) {
+      setState(() {
+        _conversations = <ChatConversation>[];
+        _conversationId = null;
+        _messages.clear();
+        _loadingConversation = true;
+      });
+      await _startNewConversation();
+      return;
+    }
+
+    setState(() {
+      _conversations = refreshed;
+      _loadingConversation = true;
+    });
+    await _openConversation(refreshed.first.id);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -421,15 +485,44 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: const Color(0xFF1B1D20),
                       onSelected: (value) async {
                         if (value == 0) {
+                          final ok = await _confirmDanger(
+                            title: 'Réinitialiser ?',
+                            message:
+                                "Cela réinitialise l'application et efface tout l'historique des conversations.",
+                            confirmLabel: 'Réinitialiser',
+                          );
+                          if (!ok) return;
                           await widget.onReset();
                           await clearChatHistory();
                           if (!mounted) return;
+                          setState(() {
+                            _conversations = <ChatConversation>[];
+                            _conversationId = null;
+                            _messages.clear();
+                            _loadingConversation = true;
+                          });
                           await _startNewConversation();
                         }
                         if (value == 1) {
+                          final ok = await _confirmDanger(
+                            title: "Effacer tout l'historique ?",
+                            message:
+                                "Toutes les conversations seront supprimées. Cette action est irreversible.",
+                            confirmLabel: 'Effacer',
+                          );
+                          if (!ok) return;
                           await clearChatHistory();
                           if (!mounted) return;
+                          setState(() {
+                            _conversations = <ChatConversation>[];
+                            _conversationId = null;
+                            _messages.clear();
+                            _loadingConversation = true;
+                          });
                           await _startNewConversation();
+                        }
+                        if (value == 2) {
+                          await _deleteCurrentConversation();
                         }
                       },
                       itemBuilder: (context) => <PopupMenuEntry<int>>[
@@ -443,7 +536,14 @@ class _ChatScreenState extends State<ChatScreen> {
                         const PopupMenuItem<int>(
                           value: 1,
                           child: Text(
-                            'Effacer historique',
+                            "Effacer tout l'historique",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        const PopupMenuItem<int>(
+                          value: 2,
+                          child: Text(
+                            'Supprimer cette conversation',
                             style: TextStyle(color: Colors.white),
                           ),
                         ),
