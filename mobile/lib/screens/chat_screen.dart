@@ -5,6 +5,8 @@ import '../models/student_profile.dart';
 import '../screens/chat_history_screen.dart';
 import '../services/ollama_client.dart';
 import '../services/ollama_config.dart';
+import '../services/pedagogy_client.dart';
+import '../services/pedagogy_config.dart';
 import '../storage/chat_store.dart';
 
 enum _ChatMessageType { user, assistant, status }
@@ -69,11 +71,13 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ChatConversation> _conversations = <ChatConversation>[];
   String? _conversationId;
   late final OllamaClient _ollamaClient;
+  late final PedagogyClient _pedagogyClient;
 
   @override
   void initState() {
     super.initState();
     _ollamaClient = OllamaClient(config: OllamaConfig.fromEnv());
+    _pedagogyClient = PedagogyClient(config: PedagogyConfig.fromEnv());
     _bootConversation();
   }
 
@@ -124,8 +128,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _conversations = updated;
       _conversationId = id;
-      _messages
-        ..clear();
+      _messages.clear();
       _loadingConversation = false;
     });
   }
@@ -353,6 +356,155 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _conversations = refreshed);
   }
 
+  String? _lastUserMessage() {
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      final m = _messages[i];
+      if (m.type == _ChatMessageType.user) {
+        final t = m.text.trim();
+        if (t.isNotEmpty) return t;
+      }
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _buildPedagogyContext({int maxItems = 12}) {
+    final ctx = <Map<String, dynamic>>[];
+    for (final m in _messages) {
+      if (m.type == _ChatMessageType.status) continue;
+      ctx.add(<String, dynamic>{
+        'role': m.type == _ChatMessageType.user ? 'user' : 'assistant',
+        'text': m.text,
+      });
+    }
+    if (ctx.length <= maxItems) return ctx;
+    return ctx.sublist(ctx.length - maxItems);
+  }
+
+  Future<void> _openPedagogyQuestionDialog() async {
+    final controller = TextEditingController();
+    final initial = _inputController.text.trim().isNotEmpty
+        ? _inputController.text.trim()
+        : (_lastUserMessage() ?? '');
+    controller.text = initial;
+
+    Future<void> sendNow() async {
+      final question = controller.text.trim();
+      if (question.isEmpty) return;
+
+      Navigator.of(context).pop();
+
+      setState(() {
+        _messages.add(
+          _ChatMessage.status(
+            title: "Envoi à l'équipe pédagogique…",
+            subtitle: "Transmission de ta question au backoffice.",
+          ),
+        );
+      });
+      await _persistCurrentConversation();
+      _scrollToBottom();
+
+      try {
+        final resp = await _pedagogyClient.submitQuestion(
+          student: widget.profile,
+          question: question,
+          conversationId: _conversationId,
+          chatContext: _buildPedagogyContext(),
+        );
+
+        if (!mounted) return;
+        setState(() {
+          _messages.add(
+            _ChatMessage.status(
+              title: 'Question envoyée',
+              subtitle: resp.ticketId == null || resp.ticketId!.trim().isEmpty
+                  ? "L'équipe pédagogique va la recevoir sur le backoffice."
+                  : "Référence: ${resp.ticketId}",
+            ),
+          );
+        });
+        await _persistCurrentConversation();
+        _scrollToBottom();
+      } on PedagogyApiException catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _messages.add(
+            _ChatMessage.status(
+              title: "Envoi impossible",
+              subtitle: _humanizePedagogyError(e),
+            ),
+          );
+        });
+        await _persistCurrentConversation();
+        _scrollToBottom();
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _messages.add(
+            _ChatMessage.status(
+              title: 'Erreur',
+              subtitle: "Impossible d'envoyer la question au backoffice.",
+            ),
+          );
+        });
+        await _persistCurrentConversation();
+        _scrollToBottom();
+      }
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1B1D20),
+          title: const Text(
+            "Contacter l'équipe pédagogique",
+            style: TextStyle(color: Colors.white),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white),
+            minLines: 3,
+            maxLines: 7,
+            decoration: InputDecoration(
+              hintText: 'Écris ta question…',
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.55)),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white.withOpacity(0.15)),
+              ),
+              focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFF61C7B5)),
+              ),
+            ),
+            textInputAction: TextInputAction.send,
+            onSubmitted: (_) => sendNow(),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Annuler', style: TextStyle(color: Colors.white)),
+            ),
+            TextButton(
+              onPressed: sendNow,
+              child: const Text(
+                'Envoyer',
+                style: TextStyle(color: Color(0xFF61C7B5)),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _humanizePedagogyError(PedagogyApiException e) {
+    if (e.statusCode == null) {
+      return "API non configurée. Renseigne PEDAGOGY_API_BASE_URL via --dart-define.";
+    }
+    return "Échec API (${e.statusCode}).";
+  }
+
   Future<bool> _confirmDanger({
     required String title,
     required String message,
@@ -524,6 +676,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         if (value == 2) {
                           await _deleteCurrentConversation();
                         }
+                        if (value == 3) {
+                          await _openPedagogyQuestionDialog();
+                        }
                       },
                       itemBuilder: (context) => <PopupMenuEntry<int>>[
                         const PopupMenuItem<int>(
@@ -544,6 +699,13 @@ class _ChatScreenState extends State<ChatScreen> {
                           value: 2,
                           child: Text(
                             'Supprimer cette conversation',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        const PopupMenuItem<int>(
+                          value: 3,
+                          child: Text(
+                            "Contacter l'équipe pédagogique",
                             style: TextStyle(color: Colors.white),
                           ),
                         ),
