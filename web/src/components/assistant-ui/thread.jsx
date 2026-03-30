@@ -13,9 +13,8 @@ export function Thread() {
           {({ message }) => (
             <MessagePrimitive.Root className="message-root">
               <div
-                className={`message-bubble ${
-                  message.role === "user" ? "message-user" : "message-assistant"
-                }`}
+                className={`message-bubble ${message.role === "user" ? "message-user" : "message-assistant"
+                  }`}
               >
                 <MessagePrimitive.Parts />
               </div>
@@ -31,7 +30,7 @@ export function Thread() {
             placeholder="Écris un message..."
             rows={1}
           />
-          <ComposerPrimitive.Send className="composer-send">
+          <ComposerPrimitive.Send className="composer-send bg-color-ynov bg-send">
             Envoyer
           </ComposerPrimitive.Send>
         </ComposerPrimitive.Root>
