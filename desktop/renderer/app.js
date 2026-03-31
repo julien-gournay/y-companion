@@ -1,3 +1,5 @@
+const API_BASE_URL = "http://localhost:8080";
+
 const Auth = (() => {
   const KEY = "cc_backoffice_auth_v1";
 
@@ -22,27 +24,70 @@ const Auth = (() => {
   }
 
   function isAuthed() {
-    if (isDev()) return true;
     const s = get();
     return Boolean(s && s.token && s.user);
   }
 
   async function login(email, password) {
-    // Placeholder: brancher plus tard sur l'API du backoffice.
-    // Pour démarrer: admin@local / admin (en prod), et bypass en dev.
-    if (isDev()) {
-      set({ token: "dev", user: { name: "Dev", email } });
+    try {
+      const res = await fetch(API_BASE_URL + "/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!res.ok) {
+        let msg = "Erreur de connexion.";
+        try {
+          const body = await res.json();
+          msg = body?.error || body?.message || msg;
+        } catch {
+          // ignore parsing
+        }
+        return { ok: false, message: msg };
+      }
+
+      const data = await res.json();
+      const user = {
+        id: data.userId,
+        email: data.email,
+        role: data.role,
+        name: String(data.email || "Admin").split("@")[0],
+      };
+      set({ token: data.token, user });
       return { ok: true };
+    } catch (e) {
+      return { ok: false, message: `Erreur réseau: ${e?.message || String(e)}` };
     }
-
-    const ok = email === "admin@local" && password === "admin";
-    if (!ok) return { ok: false, message: "Identifiants invalides." };
-
-    set({ token: "local", user: { name: "Admin", email } });
-    return { ok: true };
   }
 
-  return { isDev, get, set, clear, isAuthed, login };
+  async function register(email, password, role) {
+    try {
+      const res = await fetch(API_BASE_URL + "/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, role }),
+      });
+
+      if (!res.ok) {
+        let msg = "Erreur d'inscription.";
+        try {
+          const body = await res.json();
+          msg = body?.error || body?.message || msg;
+        } catch {
+          // ignore parsing
+        }
+        return { ok: false, message: msg };
+      }
+
+      const userDto = await res.json();
+      return { ok: true, user: userDto };
+    } catch (e) {
+      return { ok: false, message: `Erreur réseau: ${e?.message || String(e)}` };
+    }
+  }
+
+  return { isDev, get, set, clear, isAuthed, login, register };
 })();
 
 const Ollama = (() => {
@@ -62,6 +107,40 @@ const Ollama = (() => {
 
   return { listModels };
 })();
+
+async function apiFetchJson(path, options = {}) {
+  const token = Auth.get()?.token;
+  const headers = { ...(options.headers || {}) };
+  if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(API_BASE_URL + path, {
+    ...options,
+    headers,
+  });
+  if (!res.ok) {
+    if (res.status === 401) {
+      Auth.clear();
+      location.hash = "#/login";
+      render();
+    }
+    let bodyText = "";
+    try {
+      bodyText = await res.text();
+    } catch {
+      bodyText = "";
+    }
+    throw new Error(`HTTP ${res.status} ${bodyText || res.statusText}`);
+  }
+  return await res.json();
+}
+
+async function apiPatchJson(path, body) {
+  return apiFetchJson(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -83,8 +162,17 @@ function mount(view) {
 
 function renderLogin() {
   const toast = el("div", { class: "toast", style: "display:none" });
-  const email = el("input", { type: "email", placeholder: "admin@local", autocomplete: "username" });
-  const password = el("input", { type: "password", placeholder: "admin", autocomplete: "current-password" });
+  const email = el("input", { type: "email", placeholder: "alice.martin@ynov.com", autocomplete: "username" });
+  const password = el("input", { type: "password", placeholder: "password123", autocomplete: "current-password" });
+  const role = el(
+    "select",
+    {
+      style: "width:100%; border-radius:12px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.2); color: var(--text); padding: 10px 10px; outline: none;",
+    },
+    []
+  );
+  role.appendChild(el("option", { value: "ADMIN", text: "ADMIN" }));
+  role.appendChild(el("option", { value: "PEDAGOGUE", text: "PEDAGOGUE" }));
 
   const submit = async () => {
     toast.style.display = "none";
@@ -98,15 +186,43 @@ function renderLogin() {
     render();
   };
 
+  const register = async () => {
+    toast.style.display = "none";
+    const res = await Auth.register(email.value.trim(), password.value, role.value);
+    if (!res.ok) {
+      toast.textContent = res.message || "Erreur d'inscription.";
+      toast.style.display = "block";
+      return;
+    }
+
+    toast.textContent = "Compte créé. Connexion automatique…";
+    toast.style.display = "block";
+
+    const loginRes = await Auth.login(email.value.trim(), password.value);
+    if (!loginRes.ok) {
+      toast.textContent = loginRes.message || "Compte créé, mais connexion impossible.";
+      toast.style.display = "block";
+      return;
+    }
+
+    location.hash = "#/dashboard";
+    render();
+  };
+
   const card = el("div", { class: "loginCard" }, [
     el("h1", { text: "Backoffice — Modèles Ollama" }),
-    el("p", { text: "Connecte-toi pour accéder au panel. En mode dev, l’accès est direct." }),
+    el("p", { text: "Connecte-toi pour accéder au panel (JWT via ycompagnon-api)." }),
     el("div", { class: "form" }, [
       el("div", { class: "field" }, [el("label", { text: "Email" }), email]),
       el("div", { class: "field" }, [el("label", { text: "Mot de passe" }), password]),
+      el("div", { class: "field" }, [el("label", { text: "Rôle" }), role]),
       el("div", { class: "helpRow" }, [
-        el("div", { class: "hint", text: Auth.isDev() ? "DEV: bypass activé" : "Hint: admin@local / admin" }),
+        el("div", { class: "hint", text: "ADMIN/PEDAGOGUE: alice.martin@ynov.com / password123" }),
         el("button", { class: "btn primary", onClick: submit, type: "button" }, ["Se connecter"]),
+      ]),
+      el("div", { class: "helpRow" }, [
+        el("div", { class: "hint", text: "Pas de compte ? Crée-le en 30s." }),
+        el("button", { class: "btn", onClick: register, type: "button" }, ["Register"]),
       ]),
       toast,
     ]),
@@ -138,7 +254,7 @@ function renderShell(active = "board", pageNode) {
         location.hash = "#/login";
         render();
       },
-      text: Auth.isDev() ? "Reset session (dev)" : "Déconnexion",
+      text: "Déconnexion",
     }),
   ]);
 
@@ -202,11 +318,26 @@ function renderDashboard() {
     kpiCard("+89%", "Feedback positif", "var(--ok)"),
   ]);
 
-  const filters = el("div", { class: "seg" }, [
-    segBtn("Toutes", true),
-    segBtn("Nouvelles", false),
-    segBtn("En cours", false),
-  ]);
+  const filtersWrap = el("div", { class: "seg" });
+
+  const filters = [
+    { label: "Toutes", status: null },
+    { label: "Nouvelles", status: "OPEN" },
+    { label: "En cours", status: "IN_PROGRESS" },
+  ];
+  let currentStatus = null;
+  const filterButtons = [];
+  for (const f of filters) {
+    const btn = segBtn(f.label, f.status === null, () => setFilter(f.status));
+    filterButtons.push(btn);
+    filtersWrap.appendChild(btn);
+  }
+
+  let selectedTicketId = null;
+  let addToKnowledgeBase = true;
+  let isSending = false;
+
+  const toast = el("div", { class: "toast", style: "display:none" });
 
   const table = el("table", { class: "table" }, [
     el("thead", {}, [
@@ -217,22 +348,171 @@ function renderDashboard() {
         el("th", { text: "Statut" }),
       ]),
     ]),
-    el("tbody", {}, [
-      row("Comment valider mon stage ?", "L. Martin", "B2 Dev", statusPill("Nouveau", "warn")),
-      row("Changer de filière en B2 ?", "S. Dupont", "B1 Info", statusPill("En cours", "brand")),
-      row("Deadline mémoire ?", "A. Nguyen", "B3 Dev", statusPill("Traité", "ok")),
-    ]),
+    el("tbody", { id: "tickets-tbody" }, []),
   ]);
 
+  const tbody = table.querySelector("#tickets-tbody");
+
+  function ticketToneAndLabel(status) {
+    if (status === "OPEN") return { label: "Nouveau", tone: "warn" };
+    if (status === "IN_PROGRESS") return { label: "En cours", tone: "brand" };
+    if (status === "RESOLVED") return { label: "Traité", tone: "ok" };
+    return { label: status || "-", tone: "brand" };
+  }
+
+  function formatStudent(ticket) {
+    const name = ticket.studentName || "";
+    const first = ticket.studentFirstname || "";
+    const full = `${first} ${name}`.trim();
+    return full || "-";
+  }
+
+  function setToast(message, show = true) {
+    toast.textContent = message;
+    toast.style.display = show ? "block" : "none";
+  }
+
+  function setFilter(status) {
+    currentStatus = status;
+    // Rebuild plus robuste que le matching textContent: on remet aria-pressed par index.
+    for (let i = 0; i < filters.length; i++) {
+      const pressed = filters[i].status === status;
+      filterButtons[i].setAttribute("aria-pressed", pressed ? "true" : "false");
+    }
+    loadTickets();
+  }
+
+  async function resolveAdminId() {
+    // Backend attend `adminId`, mais accepte ADMIN ET PEDAGOGUE.
+    // On peut donc réutiliser l'id du user connecté.
+    return Auth.get()?.user?.id || null;
+  }
+
+  function renderTicketRows(tickets) {
+    tbody.innerHTML = "";
+
+    if (!tickets.length) {
+      tbody.innerHTML = `<tr><td colspan="4" style="color: rgba(229,231,235,0.7); padding: 14px 12px;">Aucun ticket.</td></tr>`;
+      selectedTicketId = null;
+      if (composerPillLabel) composerPillLabel.textContent = "Répondre — -";
+      if (sendBtn) sendBtn.disabled = true;
+      return;
+    }
+
+    for (const t of tickets) {
+      const { label, tone } = ticketToneAndLabel(t.status);
+      const isSelected = selectedTicketId === t.id;
+      const tr = el("tr", {
+        style: `cursor:pointer; background:${isSelected ? "rgba(96,165,250,0.16)" : "transparent"}`,
+        onClick: () => {
+          selectedTicketId = t.id;
+          composerPillLabel.textContent = `Répondre — ${formatStudent(t)}`;
+          answer.value = "";
+          sendBtn.disabled = false;
+        },
+      }, [
+        el("td", { text: t.question || "-" }),
+        el("td", { text: formatStudent(t) }),
+        el("td", { text: t.studentClass || "-" }),
+        el("td", {}, [statusPill(label, tone)]),
+      ]);
+      tbody.appendChild(tr);
+    }
+
+    // Si rien n'est sélectionné (ou ticket filtré), on en pré-sélectionne un.
+    if (!tickets.some((t) => t.id === selectedTicketId)) {
+      selectedTicketId = tickets[0].id;
+      composerPillLabel.textContent = `Répondre — ${formatStudent(tickets[0])}`;
+      sendBtn.disabled = false;
+    }
+  }
+
+  async function loadTickets() {
+    try {
+      setToast("Chargement des tickets...", true);
+      const statusParam = currentStatus ? `?status=${encodeURIComponent(currentStatus)}` : "";
+      const tickets = await apiFetchJson(`/api/tickets${statusParam}`);
+      renderTicketRows(tickets);
+      setToast("", false);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+      setToast(`Erreur chargement tickets: ${e.message || String(e)}`, true);
+    }
+  }
+
+  async function submitResolve() {
+    if (isSending) return;
+    if (!selectedTicketId) {
+      setToast("Sélectionne un ticket avant d'envoyer.", true);
+      return;
+    }
+    const answerText = String(answer.value || "").trim();
+    if (!answerText) {
+      setToast("La réponse ne peut pas être vide.", true);
+      return;
+    }
+
+    isSending = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = "Envoi...";
+
+    try {
+      const adminId = await resolveAdminId();
+      if (!adminId) throw new Error("adminId introuvable côté API (aucun ADMIN/PEDAGOGUE).");
+
+      await apiPatchJson(`/api/tickets/${selectedTicketId}/resolve`, {
+        answer: answerText,
+        adminId,
+        addToKnowledgeBase,
+      });
+
+      setToast("Ticket résolu et réponse envoyée.", true);
+      // Recharge pour refléter RESOLVED.
+      await loadTickets();
+      answer.value = "";
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+      setToast(`Erreur envoi: ${e.message || String(e)}`, true);
+    } finally {
+      isSending = false;
+      sendBtn.disabled = !selectedTicketId;
+      sendBtn.textContent = "Envoyer";
+    }
+  }
+
   const left = el("div", { class: "panel" }, [
-    el("div", { class: "panelHeader" }, [el("h2", { text: "Questions remontées" }), filters]),
+    el("div", { class: "panelHeader" }, [el("h2", { text: "Questions remontées" }), filtersWrap]),
     table,
+    toast,
     el("div", { class: "composer" }, [
-      el("div", { class: "pill" }, [el("span", { class: "dot brand" }), el("span", { text: "Répondre — L. Martin" })]),
-      el("textarea", { class: "textarea", placeholder: "Votre réponse…" }),
+      (function () {
+        // Pill label "Répondre — ..."
+        const lbl = el("span", { text: "Répondre — -" });
+        composerPillLabel = lbl;
+        return el("div", { class: "pill" }, [el("span", { class: "dot brand" }), lbl]);
+      })(),
+      (function () {
+        answer = el("textarea", { class: "textarea", placeholder: "Votre réponse…" });
+        return answer;
+      })(),
       el("div", { class: "actionsRow" }, [
-        el("button", { class: "btn", type: "button", text: "Ajouter au RAG" }),
-        el("button", { class: "btn primary", type: "button", text: "Envoyer" }),
+        (function () {
+          addToRagBtn = el("button", { class: "btn primary", type: "button", text: "Ajouter au RAG" });
+          addToRagBtn.addEventListener("click", () => {
+            addToKnowledgeBase = !addToKnowledgeBase;
+            addToRagBtn.className = addToKnowledgeBase ? "btn primary" : "btn";
+            addToRagBtn.textContent = addToKnowledgeBase ? "Ajouter au RAG" : "N'ajouter au RAG";
+          });
+          return addToRagBtn;
+        })(),
+        (function () {
+          sendBtn = el("button", { class: "btn primary", type: "button", text: "Envoyer" });
+          sendBtn.disabled = true;
+          sendBtn.addEventListener("click", submitResolve);
+          return sendBtn;
+        })(),
       ]),
     ]),
   ]);
@@ -251,6 +531,19 @@ function renderDashboard() {
 
   const page = el("div", { class: "page" }, [kpis, el("div", { class: "grid2" }, [left, right])]);
   renderShell("board", page);
+
+  // Variables initialisées via closures ci-dessus (évite de réécrire toute la structure DOM).
+  // eslint-disable-next-line no-use-before-define
+  var composerPillLabel;
+  // eslint-disable-next-line no-use-before-define
+  var answer;
+  // eslint-disable-next-line no-use-before-define
+  var addToRagBtn;
+  // eslint-disable-next-line no-use-before-define
+  var sendBtn;
+
+  // Chargement initial (et sélection auto du premier ticket).
+  loadTickets();
 }
 
 function renderOllama() {
@@ -305,8 +598,10 @@ function kpiCard(value, label, accent) {
   ]);
 }
 
-function segBtn(label, pressed) {
-  return el("button", { type: "button", "aria-pressed": pressed ? "true" : "false", text: label });
+function segBtn(label, pressed, onClick) {
+  const attrs = { type: "button", "aria-pressed": pressed ? "true" : "false", text: label };
+  if (typeof onClick === "function") attrs.onClick = onClick;
+  return el("button", attrs);
 }
 
 function statusPill(text, tone) {
@@ -354,9 +649,6 @@ function render() {
 
 window.addEventListener("hashchange", render);
 window.addEventListener("DOMContentLoaded", () => {
-  if (Auth.isDev() && !Auth.get()) {
-    Auth.set({ token: "dev", user: { name: "Dev", email: "dev@local" } });
-  }
   render();
 });
 
