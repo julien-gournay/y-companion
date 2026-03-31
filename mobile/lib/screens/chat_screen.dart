@@ -5,6 +5,7 @@ import '../models/chat_conversation.dart';
 import '../models/student_profile.dart';
 import '../screens/chat_history_screen.dart';
 import '../screens/fallback_form_screen.dart';
+import '../screens/notifications_screen.dart';
 import '../services/feedback_client.dart';
 import '../services/ollama_client.dart';
 import '../services/ollama_config.dart';
@@ -616,7 +617,17 @@ class _ChatScreenState extends State<ChatScreen> {
                         IconButton(
                           icon: const Icon(Icons.notifications_none),
                           color: Colors.white.withOpacity(0.8),
-                          onPressed: () {},
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => NotificationsScreen(
+                                  studentEmail: widget.profile.email,
+                                  sessionId: _conversationId,
+                                ),
+                              ),
+                            );
+                          },
                         ),
                         Positioned(
                           right: 7,
