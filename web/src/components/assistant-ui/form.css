@@ -1,0 +1,55 @@
+.form-root {
+    background-color: rgba(100, 100, 100, 0.3);
+    border: 2px dashed rgba(150, 150, 150, 0.6);
+    padding: 20px;
+    border-radius: 10px;
+    margin-top: 20px;
+}
+
+.form-root h2 {
+    color: rgb(255, 153, 0);
+}
+
+.no-response-form {
+    gap: 10px;
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.no-response-form input {
+    padding: 10px;
+    border: 1px solid #000000;
+    border-radius: 5px;
+    font-size: 14px;
+    background-color: rgba(29, 29, 30, 0.8);
+    color: white;
+}
+
+.no-response-form button {
+    grid-column: 1 / -1;
+    padding: 12px;
+    border: none;
+    border-radius: 5px;
+    background-color: rgba(35, 178, 164, 1);
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.no-response-form button:hover {
+    filter: brightness(1.2);
+}
+
+/* Grille responsive pour les petits écrans (mobile) */
+@media screen and (max-width: 600px) {
+    .no-response-form {
+        grid-template-columns: 1fr; /* 1 seule colonne au lieu de 2 */
+    }
+    
+    .form-root {
+        padding: 15px; /* On réduit légèrement l'espacement externe */
+    }
+}
