@@ -1133,11 +1133,122 @@ function renderFaq() {
     const haystack = [
       item.title || "",
       item.tags || "",
-      item.message || "",
+      item.content || "",
     ]
       .join(" ")
       .toLowerCase();
     return haystack.includes(q.toLowerCase());
+  }
+
+  function truncateText(text, maxLen = 160) {
+    const clean = String(text || "").trim();
+    if (!clean) return "Aucune réponse enregistrée.";
+    if (clean.length <= maxLen) return clean;
+    return `${clean.slice(0, maxLen)}…`;
+  }
+
+  function openEditDialog(item) {
+    const overlay = el("div", {
+      style:
+        "position:fixed; inset:0; background:rgba(29,29,30,0.72); display:flex; align-items:center; justify-content:center; z-index:1000;",
+    });
+
+    const qInput = el("input", {
+      type: "text",
+      value: item.title || "",
+      style:
+        "width:100%; margin-top:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:#252526; color:#f5f5f5; padding:8px 10px;",
+    });
+    const tagsInput = el("input", {
+      type: "text",
+      value: item.tags || "",
+      style:
+        "width:100%; margin-top:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:#252526; color:#f5f5f5; padding:8px 10px;",
+    });
+    const answerInput = el("textarea", {
+      class: "textarea",
+      style:
+        "width:100%; margin-top:8px; min-height:180px; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:#252526; color:#f5f5f5; padding:8px 10px;",
+    });
+    answerInput.value = item.content || "";
+
+    const err = el("div", {
+      class: "toast",
+      style: "display:none; margin-top:8px;",
+    });
+
+    const onClose = () => {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    };
+
+    const saveBtn = el(
+      "button",
+      {
+        class: "btn primary",
+        type: "button",
+        onClick: async () => {
+          const title = String(qInput.value || "").trim();
+          const tags = String(tagsInput.value || "").trim();
+          const content = String(answerInput.value || "").trim();
+          if (!title || !content) {
+            err.textContent = "Question et réponse sont obligatoires.";
+            err.style.display = "block";
+            return;
+          }
+          try {
+            err.style.display = "none";
+            await apiFetchJson(`/api/knowledge/${item.documentId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title,
+                tags,
+                content,
+                sourceUrl: item.sourceUrl || "kb://backoffice/faq",
+              }),
+            });
+            onClose();
+            await loadAll();
+          } catch (e) {
+            err.textContent = `Erreur: ${e.message || String(e)}`;
+            err.style.display = "block";
+          }
+        },
+      },
+      ["Enregistrer"]
+    );
+
+    const cancelBtn = el(
+      "button",
+      {
+        class: "btn",
+        type: "button",
+        onClick: onClose,
+      },
+      ["Annuler"]
+    );
+
+    const card = el(
+      "div",
+      {
+        style:
+          "background:#252526; padding:16px 20px; border-radius:12px; width:640px; max-width:92vw; box-shadow:0 20px 40px rgba(0,0,0,0.45);",
+      },
+      [
+        el("h3", { text: "Voir / modifier la Q/R" }),
+        qInput,
+        tagsInput,
+        answerInput,
+        err,
+        el("div", { class: "actionsRow", style: "margin-top:12px; justify-content:flex-end; gap:8px;" }, [
+          cancelBtn,
+          saveBtn,
+        ]),
+      ]
+    );
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
   }
 
   function renderItems(items) {
@@ -1159,6 +1270,7 @@ function renderFaq() {
       if (it.tags) subtitleParts.push(it.tags);
       if (it.contentLength != null) subtitleParts.push(`${it.contentLength} caractères`);
       const subtitle = subtitleParts.join(" • ");
+      const answerPreview = truncateText(it.content);
 
       const deleteBtn = el(
         "button",
@@ -1183,13 +1295,30 @@ function renderFaq() {
         []
       );
 
+      const editBtn = el(
+        "button",
+        {
+          class: "btn",
+          type: "button",
+          style: "margin-left:8px;",
+          text: "Voir / Modifier",
+          onClick: () => openEditDialog(it),
+        },
+        []
+      );
+
       list.appendChild(
         el("div", { class: "listItem" }, [
           el("div", { class: "fileMeta" }, [
             el("div", { class: "fileName", text: title }),
             el("div", { class: "fileSub", text: subtitle }),
+            el("div", {
+              class: "fileSub",
+              style: "margin-top:6px; max-width:720px; white-space:normal; line-height:1.35;",
+              text: answerPreview,
+            }),
           ]),
-          el("div", {}, [deleteBtn]),
+          el("div", {}, [editBtn, deleteBtn]),
         ])
       );
     }
