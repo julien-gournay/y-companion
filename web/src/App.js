@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react";
 import { Thread } from "./components/assistant-ui/thread";
 import { Form } from "./components/assistant-ui/form";
@@ -10,9 +10,7 @@ function extractLastUserText(messages) {
     const lastUserMessage = [...messages]
       .reverse()
       .find((message) => message.role === "user");
-
     if (!lastUserMessage) return "";
-
     return lastUserMessage.content
       .filter((part) => typeof part === "object" && part.type === "text")
       .map((part) => part.text || "")
@@ -28,109 +26,100 @@ export default function App() {
   const [showForm, setShowForm] = useState(false);
   const [lastUserQuestion, setLastUserQuestion] = useState("");
 
-  const chatModel = useMemo(
-    () => ({
-      async run({ messages }) {
-        try {
-          const prompt = extractLastUserText(messages);
+  // Refs toujours à jour — accessibles depuis la closure figée du chatModel
+  const showFormRef = useRef(setShowForm);
+  const lastUserQuestionRef = useRef(setLastUserQuestion);
+  showFormRef.current = setShowForm;
+  lastUserQuestionRef.current = setLastUserQuestion;
 
-          if (!prompt) {
-            return {
-              content: [{ type: "text", text: "Bonjour ! 👋 Je suis Campus Companion. Pose-moi ta question !" }],
-            };
-          }
+  // chatModel est stable (useMemo []) mais utilise les refs pour les setters
+  const chatModel = useMemo(() => ({
+    async run({ messages }) {
+      try {
+        const prompt = extractLastUserText(messages);
 
-          // Sauvegarder la dernière question
-          setLastUserQuestion(prompt);
-
-          // 📍 Construire l'historique complet pour le contexte
-          const conversationHistory = messages
-            .filter((msg) => msg.role === "user" || msg.role === "assistant")
-            .map((msg) => ({
-              role: msg.role,
-              content: msg.content
-                .filter((part) => typeof part === "object" && part.type === "text")
-                .map((part) => part.text || "")
-                .join("\n"),
-            }))
-            .filter((msg) => msg.content.trim() !== "");
-
-          // Appel API réelle avec historique complet
-          const response = await fetch("http://localhost:8080/api/chat", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              question: prompt,
-              userId: null, // À adapter avec l'utilisateur authentifié si nécessaire
-              sessionId: "web-session", // À adapter avec une vraie sessionId
-              conversationHistory: conversationHistory, // 📍 Envoyer l'historique pour le contexte
-            }),
-          });
-
-          if (!response.ok) {
-            console.error("API error:", response.status);
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: "Je suis désolé, j'ai eu une erreur en contactant le serveur. Peux-tu réessayer ?",
-                },
-              ],
-            };
-          }
-
-          const data = await response.json();
-
-          // 📍 Afficher le formulaire si ticketCreated = true (IA n'a pas trouvé de réponse)
-          if (data.ticketCreated) {
-            setShowForm(true);
-          } else {
-            setShowForm(false);
-          }
-
-          // 📍 Afficher la réponse SANS les sources (masquées pour le moment)
-          const fullAnswer = data.answer || "Pas de réponse";
-
+        if (!prompt) {
           return {
-            content: [{ type: "text", text: fullAnswer }],
-            metadata: {
-              custom: {
-                suggestions: data.suggestions || [
-                  "Horaires des cours",
-                  "Bibliothèque",
-                  "Restaurants du campus",
-                  "Événements étudiants",
-                ],
-                ticketId: data.ticketId,
-                interactionId: data.interactionId,
-                sources: data.sources || [], // 📍 Garder les sources en metadata (masquées) pour utilisation future
-              },
-            },
-          };
-        } catch (error) {
-          console.error("Chat model error:", error);
-          setShowForm(false);
-          return {
-            content: [
-              {
-                type: "text",
-                text: "Je suis désolé, j'ai eu une erreur. Peux-tu réessayer ?",
-              },
-            ],
+            content: [{ type: "text", text: "Bonjour ! 👋 Je suis Campus Companion. Pose-moi ta question !" }],
           };
         }
-      },
-    }),
-    []
-  );
+
+        // Via ref → toujours la version fraîche de setState
+        lastUserQuestionRef.current(prompt);
+
+        const conversationHistory = messages
+          .filter((msg) => msg.role === "user" || msg.role === "assistant")
+          .map((msg) => ({
+            role: msg.role,
+            content: msg.content
+              .filter((part) => typeof part === "object" && part.type === "text")
+              .map((part) => part.text || "")
+              .join("\n"),
+          }))
+          .filter((msg) => msg.content.trim() !== "");
+
+        const response = await fetch("http://localhost:8080/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: prompt,
+            userId: null,
+            sessionId: "web-session",
+            conversationHistory,
+          }),
+        });
+
+        if (!response.ok) {
+          console.error("API error:", response.status);
+          showFormRef.current(false);
+          return {
+            content: [{ type: "text", text: "Je suis désolé, j'ai eu une erreur en contactant le serveur. Peux-tu réessayer ?" }],
+          };
+        }
+
+        const data = await response.json();
+
+        console.log("[Campus Companion] ticketCreated:", data.ticketCreated, "| answer:", data.answer);
+
+        // ticketCreated peut être false même si l'IA n'a pas trouvé de réponse (bug backend)
+        // On détecte aussi via le texte de réponse
+        const noAnswerInText = /(pas trouv[eé]|pas de r[eé]ponse pr[eé]cise|[eé]quipe p[eé]dagogique|renseigner.*pr[eé]nom)/i.test(data.answer || "");
+        const shouldShowForm = !!data.ticketCreated || noAnswerInText;
+
+        showFormRef.current(shouldShowForm);
+
+        return {
+          content: [{ type: "text", text: data.answer || "Pas de réponse" }],
+          metadata: {
+            custom: {
+              ticketCreated: !!data.ticketCreated,
+              suggestions: data.suggestions || [
+                "Horaires des cours",
+                "Bibliothèque",
+                "Restaurants du campus",
+                "Événements étudiants",
+              ],
+              ticketId: data.ticketId,
+              interactionId: data.interactionId,
+              sources: data.sources || [],
+            },
+          },
+        };
+      } catch (error) {
+        console.error("Chat model error:", error);
+        showFormRef.current(false);
+        return {
+          content: [{ type: "text", text: "Je suis désolé, j'ai eu une erreur. Peux-tu réessayer ?" }],
+        };
+      }
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), []);
 
   const initialMessagesList = [
     {
       role: "assistant",
-      content:
-        "Salut ! 👋 Je suis Campus Companion, ton assistant pour la vie sur le campus. Comment puis-je t'aider ?",
+      content: "Salut ! 👋 Je suis Campus Companion, ton assistant pour la vie sur le campus. Comment puis-je t'aider ?",
       metadata: {
         custom: {
           suggestions: [
@@ -144,73 +133,43 @@ export default function App() {
     },
   ];
 
-  const suggestionAdapter = useMemo(
-    () => ({
-      generate: async (input) => {
-        try {
-          let lastMessage = null;
-
-          if (!input) {
-            lastMessage = null;
-          } else if (Array.isArray(input)) {
-            // if messages array is empty, fallback to initialMessagesList
-            if (input.length === 0 && Array.isArray(initialMessagesList) && initialMessagesList.length > 0) {
-              lastMessage = initialMessagesList[initialMessagesList.length - 1];
-            } else {
-              lastMessage = input.length ? input[input.length - 1] : null;
-            }
-          } else if (input.messages && Array.isArray(input.messages)) {
-            lastMessage = input.messages.length ? input.messages[input.messages.length - 1] : null;
-          } else {
-            lastMessage = input;
-          }
-
-          const suggestions = lastMessage?.metadata?.custom?.suggestions || [];
-
-          if (Array.isArray(suggestions) && suggestions.length > 0) return suggestions;
-
-          // No suggestions found -> try to fallback to initial runtime messages if provided
-          const runtimeInitial = (input && input.initialMessages) || initialMessagesList || null;
-          if (Array.isArray(runtimeInitial) && runtimeInitial.length > 0) {
-            const lastA = [...runtimeInitial].reverse().find((m) => m.role === 'assistant');
-            const list = lastA?.metadata?.custom?.suggestions || [];
-            if (list.length) return list;
-          }
-
-          // Final fallback
-          return [
-            'Horaires des cours',
-            'Bibliothèque',
-            'Restaurants du campus',
-            'Événements étudiants',
-          ];
-        } catch (error) {
-          console.error('Error generating suggestions adapter:', error);
-          return [];
+  const suggestionAdapter = useMemo(() => ({
+    generate: async (input) => {
+      try {
+        let lastMessage = null;
+        if (!input) {
+          lastMessage = null;
+        } else if (Array.isArray(input)) {
+          lastMessage = input.length ? input[input.length - 1] : null;
+        } else if (input.messages && Array.isArray(input.messages)) {
+          lastMessage = input.messages.length ? input.messages[input.messages.length - 1] : null;
+        } else {
+          lastMessage = input;
         }
-      },
-      getSuggestions: async (maybeMessages) => {
-        try {
-          if (Array.isArray(maybeMessages)) {
-            const last = maybeMessages.length ? maybeMessages[maybeMessages.length - 1] : null;
-            return last?.metadata?.custom?.suggestions || [];
-          }
-
-          return [];
-        } catch (e) {
-          console.error('getSuggestions adapter error', e);
-          return [];
+        const suggestions = lastMessage?.metadata?.custom?.suggestions || [];
+        if (Array.isArray(suggestions) && suggestions.length > 0) return suggestions;
+        return ["Horaires des cours", "Bibliothèque", "Restaurants du campus", "Événements étudiants"];
+      } catch (error) {
+        console.error("Error generating suggestions adapter:", error);
+        return [];
+      }
+    },
+    getSuggestions: async (maybeMessages) => {
+      try {
+        if (Array.isArray(maybeMessages)) {
+          const last = maybeMessages.length ? maybeMessages[maybeMessages.length - 1] : null;
+          return last?.metadata?.custom?.suggestions || [];
         }
-      },
-    }),
-    [initialMessagesList]
-  );
+        return [];
+      } catch (e) {
+        return [];
+      }
+    },
+  }), []);
 
   const runtime = useLocalRuntime(chatModel, {
     initialMessages: initialMessagesList,
-    adapters: {
-      suggestion: suggestionAdapter,
-    },
+    adapters: { suggestion: suggestionAdapter },
   });
 
   return (

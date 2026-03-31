@@ -1,6 +1,6 @@
 .form-root {
-    background-color: rgba(255, 153, 0, 0.3);
-    border: 2px dashed rgb(255, 153, 0);
+    background-color: rgba(100, 100, 100, 0.3);
+    border: 2px dashed rgba(150, 150, 150, 0.6);
     padding: 20px;
     border-radius: 10px;
     margin-top: 20px;
