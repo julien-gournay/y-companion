@@ -25,10 +25,10 @@
   flex-wrap: wrap;
   margin-bottom: 6px;
   padding-bottom: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
   position: sticky;
-  top: 0;
-  background: linear-gradient(180deg, rgba(13, 13, 13, 0.9), rgba(13, 13, 13, 0.85));
+  top: -16px;
+  background: linear-gradient(180deg, rgba(13, 13, 13), rgba(13, 13, 13));
   z-index: 5;
   padding-top: 8px;
 }
@@ -36,7 +36,7 @@
 .suggestion-item {
   padding: 8px 12px;
   border: 1px solid #303030;
-  border-radius: 8px;
+  border-radius: 30px;
   background: #171717;
   color: #f9fafb;
   font-size: 13px;
@@ -48,7 +48,7 @@
 
 .suggestion-item:hover {
   background: #232323;
-  border-color: #3b82f6;
+  border-color: #23b2a4;
 }
 
 /* Empty State */
@@ -82,7 +82,7 @@
 
 .message-user {
   margin-left: auto;
-  background: #2563eb;
+  background: #262628;
   color: #ffffff;
 }
 
@@ -134,7 +134,7 @@
   padding: 0 16px;
   border: none;
   border-radius: 10px;
-  background: #23b2a4;
+  background: #2563eb;
   color: #ffffff;
   font-weight: 600;
   font-size: 14px;
