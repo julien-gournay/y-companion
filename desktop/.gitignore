@@ -1,0 +1,6 @@
+# Node
+**/node_modules
+
+# Electron build outputs (if added later)
+**/dist
+**/out
