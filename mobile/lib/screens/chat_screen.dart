@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/chat_conversation.dart';
 import '../models/student_profile.dart';
 import '../screens/chat_history_screen.dart';
+import '../screens/fallback_form_screen.dart';
+import '../services/feedback_client.dart';
 import '../services/ollama_client.dart';
 import '../services/ollama_config.dart';
 import '../services/pedagogy_client.dart';
@@ -11,19 +14,44 @@ import '../storage/chat_store.dart';
 
 enum _ChatMessageType { user, assistant, status }
 
+class _DocumentSource {
+  final String title;
+  final String? downloadUrl;
+
+  const _DocumentSource({required this.title, this.downloadUrl});
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'title': title,
+    'downloadUrl': downloadUrl,
+  };
+
+  factory _DocumentSource.fromJson(Map<String, dynamic> json) {
+    return _DocumentSource(
+      title: (json['title'] ?? '').toString(),
+      downloadUrl: json['downloadUrl']?.toString(),
+    );
+  }
+}
+
 class _ChatMessage {
   final _ChatMessageType type;
   final String text;
   final String? metaText;
   final List<String>? emojiRow;
   final String? subtitle;
+  final int? interactionId;
+  final List<_DocumentSource>? sources;
+  String? feedback; // "UP" | "DOWN" | null
 
-  const _ChatMessage._({
+  _ChatMessage._({
     required this.type,
     required this.text,
     this.metaText,
     this.emojiRow,
     this.subtitle,
+    this.interactionId,
+    this.sources,
+    this.feedback,
   });
 
   factory _ChatMessage.user(String text) =>
@@ -33,11 +61,17 @@ class _ChatMessage {
     required String text,
     String? metaText,
     List<String>? emojiRow,
+    int? interactionId,
+    List<_DocumentSource>? sources,
+    String? feedback,
   }) => _ChatMessage._(
     type: _ChatMessageType.assistant,
     text: text,
     metaText: metaText,
     emojiRow: emojiRow,
+    interactionId: interactionId,
+    sources: sources,
+    feedback: feedback,
   );
 
   factory _ChatMessage.status({
@@ -72,12 +106,17 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _conversationId;
   late final OllamaClient _ollamaClient;
   late final PedagogyClient _pedagogyClient;
+  late final FeedbackClient _feedbackClient;
+  late final String _apiBaseUrl;
 
   @override
   void initState() {
     super.initState();
-    _ollamaClient = OllamaClient(config: OllamaConfig.fromEnv());
+    final config = OllamaConfig.fromEnv();
+    _apiBaseUrl = config.baseUrl;
+    _ollamaClient = OllamaClient(config: config);
     _pedagogyClient = PedagogyClient(config: PedagogyConfig.fromEnv());
+    _feedbackClient = FeedbackClient(config: config);
     _bootConversation();
   }
 
@@ -163,7 +202,17 @@ class _ChatScreenState extends State<ChatScreen> {
   _ChatMessage _fromStoredMessage(ChatMessage m) {
     switch (m.role) {
       case 'assistant':
-        return _ChatMessage.assistant(text: m.text, metaText: m.metaText, emojiRow: m.emojiRow);
+        final sources = m.sources
+            ?.map((s) => _DocumentSource(title: s.title, downloadUrl: s.downloadUrl))
+            .toList();
+        return _ChatMessage.assistant(
+          text: m.text,
+          metaText: m.metaText,
+          emojiRow: m.emojiRow,
+          interactionId: m.interactionId,
+          feedback: m.feedback,
+          sources: sources,
+        );
       case 'status':
         return _ChatMessage.status(title: m.text, subtitle: m.subtitle ?? '');
       case 'user':
@@ -176,12 +225,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final now = DateTime.now().millisecondsSinceEpoch;
     switch (m.type) {
       case _ChatMessageType.assistant:
+        final storedSources = m.sources
+            ?.map((s) => StoredSource(title: s.title, downloadUrl: s.downloadUrl))
+            .toList();
         return ChatMessage(
           role: 'assistant',
           text: m.text,
           metaText: m.metaText,
           emojiRow: m.emojiRow,
           createdAtMs: now,
+          interactionId: m.interactionId,
+          feedback: m.feedback,
+          sources: storedSources,
         );
       case _ChatMessageType.status:
         return ChatMessage(
@@ -217,7 +272,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final updatedConversation = ChatConversation(
       id: id,
       title: title,
-      createdAtMs: existingIndex >= 0 ? _conversations[existingIndex].createdAtMs : now,
+      createdAtMs: existingIndex >= 0
+          ? _conversations[existingIndex].createdAtMs
+          : now,
       updatedAtMs: now,
       messages: storedMessages,
     );
@@ -267,13 +324,18 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       if (!mounted) return;
 
+      final sources = response.sources
+          .map((s) => _DocumentSource(title: s.title, downloadUrl: s.downloadUrl))
+          .toList();
+
       setState(() {
         _messages.add(
           _ChatMessage.assistant(
             text: response.content.trim().isEmpty
                 ? "Je n'ai pas pu generer une reponse exploitable."
                 : response.content.trim(),
-            metaText: _formatSources(response.sources),
+            interactionId: response.interactionId,
+            sources: sources.isNotEmpty ? sources : null,
           ),
         );
         if (response.ticketCreated) {
@@ -290,6 +352,11 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       await _persistCurrentConversation();
       _scrollToBottom();
+
+      // Si l'IA demande les infos étudiant → ouvrir le formulaire
+      if (response.requiresStudentInfo) {
+        await _openFallbackForm(content);
+      }
     } on OllamaException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -319,6 +386,34 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _handleFeedback(int messageIndex, FeedbackType feedbackType) async {
+    final msg = _messages[messageIndex];
+    if (msg.interactionId == null || msg.feedback != null) return;
+
+    final feedbackValue = feedbackType == FeedbackType.up ? 'UP' : 'DOWN';
+
+    try {
+      await _feedbackClient.sendFeedback(
+        interactionId: msg.interactionId!,
+        feedback: feedbackType,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        msg.feedback = feedbackValue;
+      });
+      await _persistCurrentConversation();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible d\'envoyer le feedback'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   List<OllamaChatMessage> _toOllamaMessages() {
     final mapped = <OllamaChatMessage>[
       const OllamaChatMessage(
@@ -339,11 +434,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return mapped;
   }
 
-  String? _formatSources(List<String> sources) {
-    if (sources.isEmpty) return null;
-    return 'Sources: ${sources.join(' | ')}';
-  }
-
   String _humanizeOllamaError(OllamaException e) {
     final target = e.uri?.toString() ?? 'URL inconnue';
     if (e.statusCode == null) {
@@ -354,7 +444,9 @@ class _ChatScreenState extends State<ChatScreen> {
       return "Echec API Campus (${e.statusCode}) sur $target.";
     }
     final compact = details.replaceAll('\n', ' ');
-    final shortBody = compact.length > 180 ? '${compact.substring(0, 180)}…' : compact;
+    final shortBody = compact.length > 180
+        ? '${compact.substring(0, 180)}…'
+        : compact;
     return "Echec API Campus (${e.statusCode}) sur $target: $shortBody";
   }
 
@@ -373,131 +465,32 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _conversations = refreshed);
   }
 
-  String? _lastUserMessage() {
-    for (var i = _messages.length - 1; i >= 0; i--) {
-      final m = _messages[i];
-      if (m.type == _ChatMessageType.user) {
-        final t = m.text.trim();
-        if (t.isNotEmpty) return t;
-      }
-    }
-    return null;
-  }
+  Future<void> _openFallbackForm(String? initialQuestion) async {
+    final ticketId = await Navigator.of(context).push<int>(
+      MaterialPageRoute<int>(
+        builder: (_) => FallbackFormScreen(
+          profile: widget.profile,
+          initialQuestion: initialQuestion,
+        ),
+      ),
+    );
 
-  Future<void> _openPedagogyQuestionDialog() async {
-    final controller = TextEditingController();
-    final initial = _inputController.text.trim().isNotEmpty
-        ? _inputController.text.trim()
-        : (_lastUserMessage() ?? '');
-    controller.text = initial;
-
-    Future<void> sendNow() async {
-      final question = controller.text.trim();
-      if (question.isEmpty) return;
-
-      Navigator.of(context).pop();
-
+    if (ticketId != null && mounted) {
       setState(() {
         _messages.add(
           _ChatMessage.status(
-            title: "Envoi à l'équipe pédagogique…",
-            subtitle: "Transmission de ta question au backoffice.",
+            title: 'Ticket créé',
+            subtitle: 'Référence: #$ticketId — L\'équipe pédagogique va te répondre.',
           ),
         );
       });
       await _persistCurrentConversation();
       _scrollToBottom();
-
-      try {
-        final resp = await _pedagogyClient.submitQuestion(
-          student: widget.profile,
-          question: question,
-        );
-
-        if (!mounted) return;
-        setState(() {
-          _messages.add(
-            _ChatMessage.status(
-              title: 'Question envoyée',
-              subtitle: resp.ticketId == null || resp.ticketId!.trim().isEmpty
-                  ? "L'équipe pédagogique va la recevoir sur le backoffice."
-                  : "Référence: ${resp.ticketId}",
-            ),
-          );
-        });
-        await _persistCurrentConversation();
-        _scrollToBottom();
-      } on PedagogyApiException catch (e) {
-        if (!mounted) return;
-        setState(() {
-          _messages.add(
-            _ChatMessage.status(
-              title: "Envoi impossible",
-              subtitle: _humanizePedagogyError(e),
-            ),
-          );
-        });
-        await _persistCurrentConversation();
-        _scrollToBottom();
-      } catch (_) {
-        if (!mounted) return;
-        setState(() {
-          _messages.add(
-            _ChatMessage.status(
-              title: 'Erreur',
-              subtitle: "Impossible d'envoyer la question au backoffice.",
-            ),
-          );
-        });
-        await _persistCurrentConversation();
-        _scrollToBottom();
-      }
     }
+  }
 
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1B1D20),
-          title: const Text(
-            "Contacter l'équipe pédagogique",
-            style: TextStyle(color: Colors.white),
-          ),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            style: const TextStyle(color: Colors.white),
-            minLines: 3,
-            maxLines: 7,
-            decoration: InputDecoration(
-              hintText: 'Écris ta question…',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.55)),
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.15)),
-              ),
-              focusedBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFF61C7B5)),
-              ),
-            ),
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) => sendNow(),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler', style: TextStyle(color: Colors.white)),
-            ),
-            TextButton(
-              onPressed: sendNow,
-              child: const Text(
-                'Envoyer',
-                style: TextStyle(color: Color(0xFF61C7B5)),
-              ),
-            ),
-          ],
-        );
-      },
-    );
+  Future<void> _openPedagogyQuestionDialog() async {
+    await _openFallbackForm(null);
   }
 
   String _humanizePedagogyError(PedagogyApiException e) {
@@ -518,15 +511,24 @@ class _ChatScreenState extends State<ChatScreen> {
         return AlertDialog(
           backgroundColor: const Color(0xFF1B1D20),
           title: Text(title, style: const TextStyle(color: Colors.white)),
-          content: Text(message, style: TextStyle(color: Colors.white.withOpacity(0.75))),
+          content: Text(
+            message,
+            style: TextStyle(color: Colors.white.withOpacity(0.75)),
+          ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Annuler', style: TextStyle(color: Colors.white)),
+              child: const Text(
+                'Annuler',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: Text(confirmLabel, style: const TextStyle(color: Color(0xFF61C7B5))),
+              child: Text(
+                confirmLabel,
+                style: const TextStyle(color: Color(0xFF61C7B5)),
+              ),
             ),
           ],
         );
@@ -544,7 +546,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final ok = await _confirmDanger(
       title: 'Supprimer cette conversation ?',
-      message: "Cette action est irreversible. La conversation en cours sera supprimée de l'historique.",
+      message:
+          "Cette action est irreversible. La conversation en cours sera supprimée de l'historique.",
       confirmLabel: 'Supprimer',
     );
     if (!ok) return;
@@ -753,6 +756,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                 text: msg.text,
                                 metaText: msg.metaText,
                                 emojiRow: msg.emojiRow,
+                                interactionId: msg.interactionId,
+                                feedback: msg.feedback,
+                                sources: msg.sources,
+                                apiBaseUrl: _apiBaseUrl,
+                                onFeedback: (feedbackType) =>
+                                    _handleFeedback(index, feedbackType),
                               );
                             case _ChatMessageType.status:
                               return _StatusCard(
@@ -861,11 +870,47 @@ class _AssistantBubble extends StatelessWidget {
   final String text;
   final String? metaText;
   final List<String>? emojiRow;
+  final int? interactionId;
+  final String? feedback;
+  final List<_DocumentSource>? sources;
+  final String? apiBaseUrl;
+  final void Function(FeedbackType)? onFeedback;
 
-  const _AssistantBubble({required this.text, this.metaText, this.emojiRow});
+  const _AssistantBubble({
+    required this.text,
+    this.metaText,
+    this.emojiRow,
+    this.interactionId,
+    this.feedback,
+    this.sources,
+    this.apiBaseUrl,
+    this.onFeedback,
+  });
+
+  String _buildFullUrl(String downloadUrl) {
+    if (downloadUrl.startsWith('http://') || downloadUrl.startsWith('https://')) {
+      return downloadUrl;
+    }
+    if (apiBaseUrl != null && downloadUrl.startsWith('/')) {
+      return '$apiBaseUrl$downloadUrl';
+    }
+    return downloadUrl;
+  }
+
+  Future<void> _openSource(_DocumentSource source) async {
+    if (source.downloadUrl == null) return;
+    final fullUrl = _buildFullUrl(source.downloadUrl!);
+    final uri = Uri.tryParse(fullUrl);
+    if (uri != null && await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final bool canFeedback = interactionId != null && onFeedback != null;
+    final bool hasSources = sources != null && sources!.isNotEmpty;
+
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -886,6 +931,63 @@ class _AssistantBubble extends StatelessWidget {
                 fontWeight: FontWeight.w500,
               ),
             ),
+            if (hasSources) ...<Widget>[
+              const SizedBox(height: 10),
+              Text(
+                'Sources:',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.6),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: sources!.map((source) {
+                  final hasUrl = source.downloadUrl != null;
+                  return GestureDetector(
+                    onTap: hasUrl ? () => _openSource(source) : null,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF35A29F).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFF35A29F).withOpacity(0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Icon(
+                            hasUrl ? Icons.download_rounded : Icons.description_outlined,
+                            size: 14,
+                            color: const Color(0xFF35A29F),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              source.title,
+                              style: TextStyle(
+                                color: hasUrl
+                                    ? const Color(0xFF35A29F)
+                                    : Colors.white.withOpacity(0.7),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                                decoration: hasUrl ? TextDecoration.underline : null,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
             if (metaText != null) ...<Widget>[
               const SizedBox(height: 10),
               Text(
@@ -910,7 +1012,76 @@ class _AssistantBubble extends StatelessWidget {
                 ],
               ),
             ],
+            if (canFeedback) ...<Widget>[
+              const SizedBox(height: 10),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  if (feedback == null || feedback == 'UP')
+                    _FeedbackButton(
+                      icon: Icons.thumb_up_outlined,
+                      selectedIcon: Icons.thumb_up,
+                      isSelected: feedback == 'UP',
+                      onTap: feedback == null
+                          ? () => onFeedback!(FeedbackType.up)
+                          : null,
+                    ),
+                  if (feedback == null) const SizedBox(width: 8),
+                  if (feedback == null || feedback == 'DOWN')
+                    _FeedbackButton(
+                      icon: Icons.thumb_down_outlined,
+                      selectedIcon: Icons.thumb_down,
+                      isSelected: feedback == 'DOWN',
+                      onTap: feedback == null
+                          ? () => onFeedback!(FeedbackType.down)
+                          : null,
+                    ),
+                ],
+              ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedbackButton extends StatelessWidget {
+  final IconData icon;
+  final IconData selectedIcon;
+  final bool isSelected;
+  final VoidCallback? onTap;
+
+  const _FeedbackButton({
+    required this.icon,
+    required this.selectedIcon,
+    required this.isSelected,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFF35A29F).withOpacity(0.2)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFF35A29F)
+                : Colors.white.withOpacity(0.15),
+          ),
+        ),
+        child: Icon(
+          isSelected ? selectedIcon : icon,
+          size: 18,
+          color: isSelected
+              ? const Color(0xFF35A29F)
+              : Colors.white.withOpacity(0.5),
         ),
       ),
     );

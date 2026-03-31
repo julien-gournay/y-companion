@@ -80,7 +80,7 @@ class _CampusOnboardingScreenState extends State<CampusOnboardingScreen> {
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
     );
   }
 
@@ -178,9 +178,9 @@ class _CampusOnboardingScreenState extends State<CampusOnboardingScreen> {
                       const SizedBox(height: 12),
                       // Description
                       Text(
-                        "Votre compagnon IA pour vos quesstions liés à la pédagogie et aux questions liés à l'informatique. Demandez lui ce que vous voulez, il vous répondera. Que ce soit une question de cours, de réseaux, de code, ou même d'anglais, Y-compagnon vous aidera à progresser. ",
+                        "Votre compagnon IA pour vos quesstions liés à la pédagogie et aux questions liés à l'informatique. ",
                         style: GoogleFonts.montserrat(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w400,
                           color: _whiteColor.withOpacity(0.85),
                           height: 1.4,
@@ -321,7 +321,7 @@ class _CampusOnboardingScreenState extends State<CampusOnboardingScreen> {
                           // Se connecter button
                           SizedBox(
                             width: double.infinity,
-                            height: 60,
+                            height: 50,
                             child: ElevatedButton(
                               onPressed: _onSubmit,
                               style: ElevatedButton.styleFrom(

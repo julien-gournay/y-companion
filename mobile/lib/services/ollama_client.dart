@@ -29,30 +29,36 @@ class OllamaChatMessage {
   final String role; // 'user' | 'assistant' | 'system'
   final String content;
 
-  const OllamaChatMessage({
-    required this.role,
-    required this.content,
-  });
+  const OllamaChatMessage({required this.role, required this.content});
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'role': role,
-        'content': content,
-      };
+    'role': role,
+    'content': content,
+  };
+}
+
+class DocumentSource {
+  final String title;
+  final String? downloadUrl;
+
+  const DocumentSource({required this.title, this.downloadUrl});
 }
 
 class OllamaChatResponse {
   final String content;
-  final List<String> sources;
+  final List<DocumentSource> sources;
   final bool ticketCreated;
   final int? ticketId;
   final int? interactionId;
+  final bool requiresStudentInfo;
 
   const OllamaChatResponse({
     required this.content,
-    this.sources = const <String>[],
+    this.sources = const <DocumentSource>[],
     this.ticketCreated = false,
     this.ticketId,
     this.interactionId,
+    this.requiresStudentInfo = false,
   });
 
   static OllamaChatResponse fromJson(Map<String, dynamic> json) {
@@ -64,10 +70,11 @@ class OllamaChatResponse {
       ticketCreated: json['ticketCreated'] == true,
       ticketId: _toIntOrNull(json['ticketId']),
       interactionId: _toIntOrNull(json['interactionId']),
+      requiresStudentInfo: json['requiresStudentInfo'] == true,
     );
   }
 
-  static List<String> _readSources(Map<String, dynamic> json) {
+  static List<DocumentSource> _readSources(Map<String, dynamic> json) {
     final direct = json['sources'];
     if (direct is List) {
       return direct
@@ -75,17 +82,20 @@ class OllamaChatResponse {
             if (e is Map) {
               final title = (e['title'] ?? '').toString().trim();
               final url = (e['downloadUrl'] ?? '').toString().trim();
-              if (title.isEmpty && url.isEmpty) return '';
-              if (url.isEmpty) return title;
-              if (title.isEmpty) return url;
-              return '$title ($url)';
+              if (title.isEmpty && url.isEmpty) return null;
+              return DocumentSource(
+                title: title.isNotEmpty ? title : url,
+                downloadUrl: url.isNotEmpty ? url : null,
+              );
             }
-            return e.toString();
+            final str = e.toString().trim();
+            if (str.isEmpty) return null;
+            return DocumentSource(title: str);
           })
-          .where((e) => e.trim().isNotEmpty)
+          .whereType<DocumentSource>()
           .toList();
     }
-    return const <String>[];
+    return const <DocumentSource>[];
   }
 
   static int? _toIntOrNull(dynamic value) {
@@ -179,4 +189,3 @@ class OllamaClient {
     return '';
   }
 }
-
