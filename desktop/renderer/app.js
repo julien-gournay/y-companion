@@ -440,12 +440,12 @@ function renderDashboard() {
             Array.from(tbody.children).forEach((row) => {
               row.style.background = "transparent";
             });
-            tr.style.background = "rgba(96,165,250,0.16)";
+            tr.style.background = "rgba(35,178,165,0.16)";
           },
         });
 
         tr = el("tr", {
-          style: `cursor:pointer; background:${isSelected ? "rgba(96,165,250,0.16)" : "transparent"}`,
+          style: `cursor:pointer; background:${isSelected ? "rgba(35,178,165,0.16)" : "transparent"}`,
           onClick: (e) => {
             // Évite de déclencher deux fois quand on clique sur le radio
             if (e.target && e.target.tagName === "INPUT") return;
@@ -481,7 +481,7 @@ function renderDashboard() {
       });
       const idx = tickets.indexOf(firstOpen);
       const row = tbody.children[idx];
-      if (row) row.style.background = "rgba(96,165,250,0.16)";
+      if (row) row.style.background = "rgba(35,178,165,0.16)";
     }
   }
 
@@ -795,12 +795,12 @@ function renderOllama() {
             Array.from(tbody.children).forEach((row) => {
               row.style.background = "transparent";
             });
-            tr.style.background = "rgba(96,165,250,0.16)";
+            tr.style.background = "rgba(35,178,165,0.16)";
           },
         });
 
         tr = el("tr", {
-          style: `cursor:pointer; background:${isSelected ? "rgba(96,165,250,0.16)" : "transparent"}`,
+          style: `cursor:pointer; background:${isSelected ? "rgba(35,178,165,0.16)" : "transparent"}`,
           onClick: (e) => {
             if (e.target && e.target.tagName === "INPUT") return;
             selectRadio.click();
@@ -835,7 +835,7 @@ function renderOllama() {
       });
       const idx = tickets.indexOf(firstOpen);
       const row = tbody.children[idx];
-      if (row) row.style.background = "rgba(96,165,250,0.16)";
+      if (row) row.style.background = "rgba(35,178,165,0.16)";
     }
   }
 
@@ -1165,7 +1165,7 @@ function renderFaq() {
         {
           class: "btn",
           type: "button",
-          style: "margin-left:8px; background:transparent; border:1px solid rgba(248,113,113,0.5); color:#fecaca;",
+          style: "margin-left:8px; background:transparent; border:1px solid rgba(239,111,108,0.5); color:#ffd5d4;",
           text: "Supprimer",
           onClick: async () => {
             if (!confirm(`Supprimer définitivement la Q/R "${title}" ?`)) return;
@@ -1218,25 +1218,25 @@ function renderFaq() {
   function openCreateDialog() {
     const overlay = el("div", {
       style:
-        "position:fixed; inset:0; background:rgba(15,23,42,0.7); display:flex; align-items:center; justify-content:center; z-index:1000;",
+        "position:fixed; inset:0; background:rgba(29,29,30,0.72); display:flex; align-items:center; justify-content:center; z-index:1000;",
     });
 
     const qInput = el("input", {
       type: "text",
       placeholder: "Question (titre de la Q/R)…",
       style:
-        "width:100%; margin-top:8px; border-radius:8px; border:1px solid rgba(148,163,184,0.6); background:#020617; color:white; padding:8px 10px;",
+        "width:100%; margin-top:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:#252526; color:#f5f5f5; padding:8px 10px;",
     });
     const tagsInput = el("input", {
       type: "text",
       placeholder: "Tags (séparés par des virgules, optionnel)…",
       style:
-        "width:100%; margin-top:8px; border-radius:8px; border:1px solid rgba(148,163,184,0.6); background:#020617; color:white; padding:8px 10px;",
+        "width:100%; margin-top:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:#252526; color:#f5f5f5; padding:8px 10px;",
     });
     const answerInput = el("textarea", {
       class: "textarea",
       style:
-        "width:100%; margin-top:8px; min-height:140px; border-radius:8px; border:1px solid rgba(148,163,184,0.6); background:#020617; color:white; padding:8px 10px;",
+        "width:100%; margin-top:8px; min-height:140px; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:#252526; color:#f5f5f5; padding:8px 10px;",
       placeholder:
         "Réponse fournie à l'étudiant. Ce texte sera injecté dans la base de connaissances et utilisé par l'IA.",
     });
@@ -1301,7 +1301,7 @@ function renderFaq() {
       "div",
       {
         style:
-          "background:#020617; padding:16px 20px; border-radius:12px; width:520px; max-width:90vw; box-shadow:0 20px 40px rgba(15,23,42,0.6);",
+          "background:#252526; padding:16px 20px; border-radius:12px; width:520px; max-width:90vw; box-shadow:0 20px 40px rgba(0,0,0,0.45);",
       },
       [
         el("h3", { text: "Ajouter une Q/R apprise" }),
@@ -1416,16 +1416,16 @@ function renderSettings() {
   fallbackTextarea.value = initial.fallbackMessage;
 
   const thresholdValue = el("span", {
-    style: "margin-left:12px; font-variant-numeric: tabular-nums;",
+    class: "thresholdValue",
     text: initial.confidenceThreshold.toFixed(2),
   });
   const thresholdInput = el("input", {
+    class: "thresholdInput",
     type: "range",
     min: "0",
     max: "1",
     step: "0.01",
     value: String(initial.confidenceThreshold),
-    style: "width:100%;",
   });
   thresholdInput.addEventListener("input", () => {
     const v = parseFloat(thresholdInput.value || "0");
@@ -1518,7 +1518,7 @@ function renderSettings() {
         el("label", { text: "Email de destination des remontées" }),
         emailInput,
       ]),
-      el("div", { class: "field" }, [
+      el("div", { class: "field fieldInlineControl" }, [
         el("label", { text: "Notification automatique" }),
         notifToggle,
       ]),
@@ -1567,8 +1567,8 @@ function renderSettings() {
 
   const page = el("div", { class: "page" }, [
     el("div", { class: "grid2" }, [notificationCard, fallbackCard]),
-    el("div", { class: "grid2", style: "margin-top:16px;" }, [thresholdCard, usersCard]),
-    el("div", { class: "actionsRow", style: "margin-top:16px; justify-content:flex-end;" }, [
+    el("div", { class: "grid2 settingsSection" }, [thresholdCard, usersCard]),
+    el("div", { class: "actionsRow settingsActionsRow" }, [
       saveBtn,
     ]),
     toast,
@@ -1675,7 +1675,7 @@ function docItemFromDto(doc, options = {}) {
         class: "linkBtn",
         type: "button",
         title: "Supprimer le document",
-        style: "padding:0 4px; color:#f97373;",
+        style: "padding:0 4px; color:#ef6f6c;",
       },
       ["🗑"]
     );
@@ -1693,20 +1693,20 @@ function docItemFromDto(doc, options = {}) {
     editBtn.addEventListener("click", () => {
       const overlay = el("div", {
         style:
-          "position:fixed; inset:0; background:rgba(15,23,42,0.7); display:flex; align-items:center; justify-content:center; z-index:1000;",
+          "position:fixed; inset:0; background:rgba(29,29,30,0.72); display:flex; align-items:center; justify-content:center; z-index:1000;",
       });
 
       const titleInput = el("input", {
         type: "text",
         value: title,
         style:
-          "width:100%; margin-top:8px; border-radius:8px; border:1px solid rgba(148,163,184,0.6); background:#020617; color:white; padding:8px 10px;",
+          "width:100%; margin-top:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:#252526; color:#f5f5f5; padding:8px 10px;",
       });
       const tagsInput = el("input", {
         type: "text",
         value: doc.tags || "",
         style:
-          "width:100%; margin-top:8px; border-radius:8px; border:1px solid rgba(148,163,184,0.6); background:#020617; color:white; padding:8px 10px;",
+          "width:100%; margin-top:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:#252526; color:#f5f5f5; padding:8px 10px;",
       });
       const err = el("div", {
         class: "toast",
@@ -1764,7 +1764,7 @@ function docItemFromDto(doc, options = {}) {
 
       const card = el("div", {
         style:
-          "background:#020617; padding:16px 20px; border-radius:12px; width:360px; max-width:90vw; box-shadow:0 20px 40px rgba(15,23,42,0.6);",
+          "background:#252526; padding:16px 20px; border-radius:12px; width:360px; max-width:90vw; box-shadow:0 20px 40px rgba(0,0,0,0.45);",
       }, [
         el("h3", { text: "Modifier le document" }),
         el("div", { style: "margin-top:8px; font-size:13px; opacity:0.8;" }, [
@@ -1809,13 +1809,13 @@ function docItemFromDto(doc, options = {}) {
     reindexBtn.addEventListener("click", () => {
       const overlay = el("div", {
         style:
-          "position:fixed; inset:0; background:rgba(15,23,42,0.7); display:flex; align-items:center; justify-content:center; z-index:1000;",
+          "position:fixed; inset:0; background:rgba(29,29,30,0.72); display:flex; align-items:center; justify-content:center; z-index:1000;",
       });
 
       const textarea = el("textarea", {
         class: "textarea",
         style:
-          "width:100%; margin-top:8px; min-height:120px; border-radius:8px; border:1px solid rgba(148,163,184,0.6); background:#020617; color:white; padding:8px 10px;",
+          "width:100%; margin-top:8px; min-height:120px; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:#252526; color:#f5f5f5; padding:8px 10px;",
         placeholder:
           "Colle ici le contenu textuel que l'IA doit utiliser pour ce document (base RAG)…",
       });
@@ -1847,6 +1847,7 @@ function docItemFromDto(doc, options = {}) {
                 body: JSON.stringify({ content }),
               });
               onClose();
+              alert("Reindexation terminee.");
               if (onChanged) onChanged();
             } catch (e) {
               err.textContent = `Erreur: ${e.message || String(e)}`;
@@ -1869,7 +1870,7 @@ function docItemFromDto(doc, options = {}) {
 
       const card = el("div", {
         style:
-          "background:#020617; padding:16px 20px; border-radius:12px; width:420px; max-width:90vw; box-shadow:0 20px 40px rgba(15,23,42,0.6);",
+          "background:#252526; padding:16px 20px; border-radius:12px; width:420px; max-width:90vw; box-shadow:0 20px 40px rgba(0,0,0,0.45);",
       }, [
         el("h3", { text: "Réindexer le document pour le RAG" }),
         el("div", { style: "margin-top:8px; font-size:13px; opacity:0.8;" }, [
