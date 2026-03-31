@@ -4,7 +4,7 @@ import "./thread.css";
 import { Form } from "./form";
 import { ArrowUpIcon } from "lucide-react";
 
-export function Thread({ initialSuggestions = [], showForm = false }) {
+export function Thread({ initialSuggestions = [], showForm = false, lastUserQuestion = "" }) {
   const topSuggestions =
     Array.isArray(initialSuggestions) && initialSuggestions.length > 0
       ? initialSuggestions
@@ -96,7 +96,7 @@ export function Thread({ initialSuggestions = [], showForm = false }) {
       </ThreadPrimitive.Viewport>
 
       {showForm && (
-        <Form />
+        <Form lastQuestion={lastUserQuestion} />
       )}
 
       <div className="thread-composer">

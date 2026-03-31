@@ -1,9 +1,33 @@
+/**
+ * 📌 EXEMPLE D'INTÉGRATION COMPLÈTE
+ * 
+ * Fichier: src/App_AVEC_SERVICE.js
+ * 
+ * ⚠️ C'est un exemple optionnel montrant comment utiliser le service API
+ * Vous pouvez soit:
+ * 1. Refactoriser graduellement App.js
+ * 2. Créer un nouveau fichier App_v2.js
+ * 3. Rester avec l'intégration actuelle (App.js)
+ */
+
 import { useState, useMemo } from "react";
 import { AssistantRuntimeProvider, useLocalRuntime } from "@assistant-ui/react";
+import CampusCompanionAPI from "./services/api";
 import { Thread } from "./components/assistant-ui/thread";
 import { Form } from "./components/assistant-ui/form";
 import { Header } from "./components/assistant-ui/header";
 import "./App.css";
+
+// ============================================
+// 🔌 Initialiser le service API
+// ============================================
+const api = new CampusCompanionAPI(
+  process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080'
+);
+
+// ============================================
+// 🛠️ Utilitaires
+// ============================================
 
 function extractLastUserText(messages) {
   try {
@@ -24,9 +48,21 @@ function extractLastUserText(messages) {
   }
 }
 
+// ============================================
+// 📱 Composant principal
+// ============================================
+
 export default function App() {
   const [showForm, setShowForm] = useState(false);
   const [lastUserQuestion, setLastUserQuestion] = useState("");
+  const [sessionId] = useState(() => {
+    // Générer un sessionId unique (optionnel - voir AMELIORATIONS_API.js)
+    return "web-session"; // À remplacer par uuidv4()
+  });
+
+  // ============================================
+  // 🤖 Chat Model - Utilise le service API
+  // ============================================
 
   const chatModel = useMemo(
     () => ({
@@ -36,95 +72,77 @@ export default function App() {
 
           if (!prompt) {
             return {
-              content: [{ type: "text", text: "Bonjour ! 👋 Je suis Campus Companion. Pose-moi ta question !" }],
-            };
-          }
-
-          // Sauvegarder la dernière question
-          setLastUserQuestion(prompt);
-
-          // 📍 Construire l'historique complet pour le contexte
-          const conversationHistory = messages
-            .filter((msg) => msg.role === "user" || msg.role === "assistant")
-            .map((msg) => ({
-              role: msg.role,
-              content: msg.content
-                .filter((part) => typeof part === "object" && part.type === "text")
-                .map((part) => part.text || "")
-                .join("\n"),
-            }))
-            .filter((msg) => msg.content.trim() !== "");
-
-          // Appel API réelle avec historique complet
-          const response = await fetch("http://localhost:8080/api/chat", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              question: prompt,
-              userId: null, // À adapter avec l'utilisateur authentifié si nécessaire
-              sessionId: "web-session", // À adapter avec une vraie sessionId
-              conversationHistory: conversationHistory, // 📍 Envoyer l'historique pour le contexte
-            }),
-          });
-
-          if (!response.ok) {
-            console.error("API error:", response.status);
-            return {
               content: [
                 {
                   type: "text",
-                  text: "Je suis désolé, j'ai eu une erreur en contactant le serveur. Peux-tu réessayer ?",
+                  text: "Bonjour ! 👋 Je suis Campus Companion. Pose-moi ta question !",
                 },
               ],
             };
           }
 
-          const data = await response.json();
+          // 📍 Sauvegarder la question
+          setLastUserQuestion(prompt);
 
-          // 📍 Afficher le formulaire si ticketCreated = true (IA n'a pas trouvé de réponse)
-          if (data.ticketCreated) {
+          // 📍 APPEL API VIA LE SERVICE
+          const response = await api.chat(prompt, null, sessionId);
+
+          // 📍 Gérer les tickets
+          if (response.ticketCreated) {
             setShowForm(true);
           } else {
             setShowForm(false);
           }
 
-          // 📍 Afficher la réponse SANS les sources (masquées pour le moment)
-          const fullAnswer = data.answer || "Pas de réponse";
+          // 📍 Formater la réponse avec sources
+          let fullAnswer = response.answer || "Pas de réponse";
+
+          if (response.sources && response.sources.length > 0) {
+            fullAnswer += "\n\n📚 Sources:";
+            response.sources.forEach((source) => {
+              fullAnswer += `\n• ${source.title}`;
+              if (source.downloadUrl) {
+                fullAnswer += ` [Télécharger](${source.downloadUrl})`;
+              }
+            });
+          }
 
           return {
             content: [{ type: "text", text: fullAnswer }],
             metadata: {
               custom: {
-                suggestions: data.suggestions || [
+                suggestions: response.suggestions || [
                   "Horaires des cours",
                   "Bibliothèque",
                   "Restaurants du campus",
                   "Événements étudiants",
                 ],
-                ticketId: data.ticketId,
-                interactionId: data.interactionId,
-                sources: data.sources || [], // 📍 Garder les sources en metadata (masquées) pour utilisation future
+                ticketId: response.ticketId,
+                interactionId: response.interactionId,
               },
             },
           };
         } catch (error) {
-          console.error("Chat model error:", error);
+          console.error("Chat error:", error);
           setShowForm(false);
+
           return {
             content: [
               {
                 type: "text",
-                text: "Je suis désolé, j'ai eu une erreur. Peux-tu réessayer ?",
+                text: `Je suis désolé, j'ai eu une erreur: ${error.message}`,
               },
             ],
           };
         }
       },
     }),
-    []
+    [sessionId]
   );
+
+  // ============================================
+  // 💡 Suggestion Adapter
+  // ============================================
 
   const initialMessagesList = [
     {
@@ -153,7 +171,6 @@ export default function App() {
           if (!input) {
             lastMessage = null;
           } else if (Array.isArray(input)) {
-            // if messages array is empty, fallback to initialMessagesList
             if (input.length === 0 && Array.isArray(initialMessagesList) && initialMessagesList.length > 0) {
               lastMessage = initialMessagesList[initialMessagesList.length - 1];
             } else {
@@ -169,7 +186,6 @@ export default function App() {
 
           if (Array.isArray(suggestions) && suggestions.length > 0) return suggestions;
 
-          // No suggestions found -> try to fallback to initial runtime messages if provided
           const runtimeInitial = (input && input.initialMessages) || initialMessagesList || null;
           if (Array.isArray(runtimeInitial) && runtimeInitial.length > 0) {
             const lastA = [...runtimeInitial].reverse().find((m) => m.role === 'assistant');
@@ -177,7 +193,6 @@ export default function App() {
             if (list.length) return list;
           }
 
-          // Final fallback
           return [
             'Horaires des cours',
             'Bibliothèque',
@@ -195,7 +210,6 @@ export default function App() {
             const last = maybeMessages.length ? maybeMessages[maybeMessages.length - 1] : null;
             return last?.metadata?.custom?.suggestions || [];
           }
-
           return [];
         } catch (e) {
           console.error('getSuggestions adapter error', e);
@@ -206,12 +220,20 @@ export default function App() {
     [initialMessagesList]
   );
 
+  // ============================================
+  // 🚀 Runtime
+  // ============================================
+
   const runtime = useLocalRuntime(chatModel, {
     initialMessages: initialMessagesList,
     adapters: {
       suggestion: suggestionAdapter,
     },
   });
+
+  // ============================================
+  // 🎨 Render
+  // ============================================
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -225,3 +247,62 @@ export default function App() {
     </AssistantRuntimeProvider>
   );
 }
+
+// ============================================
+// 📚 FONCTIONS UTILITAIRES SUPPLÉMENTAIRES
+// ============================================
+
+/**
+ * Récupérer l'historique de la conversation
+ */
+export async function loadConversationHistory(sessionId) {
+  try {
+    const history = await api.getConversationHistory(sessionId);
+    console.log('Historique chargé:', history);
+    return history;
+  } catch (error) {
+    console.error('Erreur chargement historique:', error);
+    return [];
+  }
+}
+
+/**
+ * Envoyer un feedback sur une réponse
+ */
+export async function submitFeedback(interactionId, isPositive) {
+  try {
+    await api.sendFeedback(interactionId, isPositive ? 'UP' : 'DOWN');
+    console.log('Feedback envoyé !');
+  } catch (error) {
+    console.error('Erreur feedback:', error);
+  }
+}
+
+/**
+ * Uploader un document
+ */
+export async function uploadNewDocument(file, title, tags) {
+  try {
+    const result = await api.uploadDocument(file, title, tags, '', true);
+    console.log('Document uploadé:', result);
+    return result;
+  } catch (error) {
+    console.error('Erreur upload:', error);
+  }
+}
+
+/**
+ * Injecter du contenu dans la KB
+ */
+export async function addToKnowledgeBase(title, tags, content) {
+  try {
+    const result = await api.ingestKnowledge(title, tags, content);
+    console.log('KB mise à jour:', result);
+    return result;
+  } catch (error) {
+    console.error('Erreur KB:', error);
+  }
+}
+
+export { api }; // Exporter pour utiliser dans d'autres composants
+
