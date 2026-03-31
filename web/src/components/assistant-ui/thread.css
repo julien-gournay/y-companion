@@ -160,3 +160,12 @@
 .txt-color-ynov {
   color: #23b2a4;
 }
+
+/* Message Feedback Container */
+.message-feedback-container {
+  margin-left: 0;
+  margin-top: -8px;
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+

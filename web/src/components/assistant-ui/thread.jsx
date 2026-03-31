@@ -2,6 +2,7 @@ import React from "react";
 import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from "@assistant-ui/react";
 import "./thread.css";
 import { Form } from "./form";
+import { FeedbackButtons } from "./feedback-buttons";
 import { ArrowUpIcon } from "lucide-react";
 
 export function Thread({ initialSuggestions = [], showForm = false, lastUserQuestion = "" }) {
@@ -81,15 +82,26 @@ export function Thread({ initialSuggestions = [], showForm = false, lastUserQues
 
         <ThreadPrimitive.Messages>
           {({ message }) => (
-            <MessagePrimitive.Root className="message-root">
-              <div
-                className={`message-bubble ${
-                  message.role === "user" ? "message-user" : "message-assistant"
-                }`}
-              >
-                <MessagePrimitive.Parts />
-              </div>
-            </MessagePrimitive.Root>
+            <>
+              <MessagePrimitive.Root className="message-root">
+                <div
+                  className={`message-bubble ${
+                    message.role === "user" ? "message-user" : "message-assistant"
+                  }`}
+                >
+                  <MessagePrimitive.Parts />
+                </div>
+              </MessagePrimitive.Root>
+              
+              {/* 📍 Afficher les boutons de feedback pour les messages de l'assistant */}
+              {message.role === "assistant" && (
+                <div className="message-feedback-container">
+                  <FeedbackButtons 
+                    interactionId={message.metadata?.custom?.interactionId}
+                  />
+                </div>
+              )}
+            </>
           )}
         </ThreadPrimitive.Messages>
 
