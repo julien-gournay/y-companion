@@ -173,7 +173,7 @@ export function Thread({ initialSuggestions = [], showForm = false, lastUserQues
   return (
     <ThreadPrimitive.Root className="thread-root">
       <ThreadPrimitive.Viewport className="thread-viewport">
-        <h1 className="text-lg font-semibold text-center text-white">Campus Companion</h1>
+        <h1 className="text-lg font-semibold text-center uppercase text-[#23b2a4]">Y'companion</h1>
         <ThreadPrimitive.Empty className="thread-empty">
           <div className="empty-content">
             <p className="empty-title">Bienvenue sur Campus Companion</p>

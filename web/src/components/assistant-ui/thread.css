@@ -8,6 +8,11 @@
   color: #f7f7f8;
 }
 
+/* Heading */
+.thread-root h1 {
+  font-family: Montserrat, sans-serif;
+}
+
 /* Thread Viewport */
 .thread-viewport {
   flex: 1;
@@ -168,4 +173,5 @@
   margin-bottom: 8px;
   padding-left: 4px;
 }
+
 

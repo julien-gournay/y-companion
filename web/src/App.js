@@ -124,9 +124,9 @@ export default function App() {
         custom: {
           suggestions: [
             "Infos pratiques",
-            "Services campus",
-            "Questions fréquentes",
-            "Contact support",
+            "Horaire du campus",
+            "Planning B3 Dev",
+            "Contacter l'école",
           ],
         },
       },
