@@ -11,8 +11,12 @@ Ce depot contient 3 clients applicatifs :
 - `mobile/` : application Flutter (Android/iOS)
 - `web/` : application React (navigateur)
 - `desktop/` : application Electron (Windows/macOS/Linux)
-
+- 
 L'objectif est de proposer une experience coherente selon le support utilise.
+
+
+Autre dépôt backend :
+- `https://github.com/mohammed-tahri24/ycompagnon-api` : API qui gére les réponses et l'IA
 
 ## Stack technique
 
